@@ -22,9 +22,10 @@ If it's black, in OBS move "Display Capture" to the top of the scene for that ga
 ## OBS startup: crash dialog can block the buffer
 OBS 32.2.2 ignores `--disable-shutdown-check`. After an unclean exit (forced close, power loss), a "Crash Detected / Run in Safe Mode?" dialog blocks the Startup shortcut and the replay buffer doesn't start. Fix when it appears: click "Run in Normal Mode". Always quit OBS from the tray (File > Exit) to avoid it.
 
-## obs-websocket listens on all interfaces (port 4455)
-OBS 32 has no localhost-only option, so it's reachable over LAN/Tailscale (auth is still on). To restrict it, run in an admin PowerShell:
-`New-NetFirewallRule -DisplayName "OBS websocket local only" -Direction Inbound -LocalPort 4455 -Protocol TCP -RemoteAddress Any -Action Block -Profile Any` (localhost traffic doesn't pass the firewall, so the hub keeps working).
+## obs-websocket listens on all interfaces (port 4455): turn it off
+P1 turned the OBS websocket server on to verify the setup. The backup had it off, and the hub never uses it, but OBS 32 binds it to all interfaces (LAN/Tailscale; auth is still on). The autopilot left it on rather than force-restart OBS unattended.
+1. In OBS: Tools > WebSocket Server Settings > untick "Enable WebSocket server" > OK.
+(Alternative if you want to keep it: in an admin PowerShell, `New-NetFirewallRule -DisplayName "OBS websocket local only" -Direction Inbound -LocalPort 4455 -Protocol TCP -RemoteAddress Any -Action Block -Profile Any`.)
 
 ## q thinks the Epic launcher is a game
 `q` stood down all run because `EpicOnlineServicesUserHelper.exe` (under `Epic Games\`) matches its auto-detect. If the Epic launcher stays running, add these to `C:\Users\jayvi\bin\q-games.txt`:
@@ -35,3 +36,10 @@ Built from `C:\projects\autoclipper-recorder` (branch `autoclipper`); build step
 1. Install/run the published Segra.exe. If you already used Segra, your saved settings win over the new defaults: in Settings pick the AV1 NVENC encoder, turn on separate audio tracks and set voice chat to Game + Discord.
 2. Play a Tarkov raid: check the raid gets start/map/end bookmarks, and the recording has tracks 1 mix, 2 mic, 3 game, 4 voice chat.
 3. To upload to the hub (off now): `cd ~/projects/autoclipper && ports claim autoclipper-upload`, then in `.env` set `AUTOCLIPPER_UPLOAD_PORT` to that port, the bind address (your Tailscale/LAN IP) and the upload token(s) (see docs/UPLOADER.md), run `uv run python -m autoclipper.uploads`, allow the port in Windows Firewall for your Tailscale range only, and put the hub URL + token into Segra's settings.json (`hubUploadUrl`, `hubUploadToken`).
+
+## After the autopilot: fresh judge budget
+The hub's judge caps (300 Haiku / 40 Sonnet) were sized for the autopilot run and count from a "run epoch" (unset = all calls so far: 60 Haiku, 28 Sonnet). When you take over, start a new budget:
+`cd ~/projects/autoclipper && uv run python -m autoclipper.judge new-run`. The weekly-usage guard (pause at 60 % of the week) still applies.
+
+## Open from the final review
+The Sonnet "polish" step (better titles for posted clips) is built but never called by the pipeline or poster. Wire it into the poster when you turn posting on, if you want it. Full review outcome: `docs/AUTOPILOT-REPORT.md`.
