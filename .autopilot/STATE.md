@@ -26,9 +26,9 @@ Task specs are in PLAN.md.
 - [x] P4.1 long-recording ingestion
 - [x] P4.2 retention
 - [x] P5.1 multi-POV alignment
-- [~] P5.2 search
-- [~] P5.3 bot integration doc
-- [ ] R2 final review + report
+- [x] P5.2 search
+- [x] P5.3 bot integration doc
+- [~] R2 final review + report
 
 ## Notes for the next session
 
@@ -57,3 +57,4 @@ Record decisions, gotchas, and anything a restarted session must know here.
 - P3.4: hub receiver autoclipper.uploads (off unless AUTOCLIPPER_UPLOAD_PORT set; `uv run python -m autoclipper.uploads`), inbox data/inbox/<user>/<sha>/ (skip .staging/). Recorder HubUploadClient (settings hubUploadUrl/hubUploadToken). Enabling = NEEDS-JAY (ports claim autoclipper-upload, tokens, firewall).
 - P5.1: autoclipper.align.align(rec_a, rec_b, a_mic_track, b_voice_track, ...) offset = t_b - t_a; no CLI yet (add `autoclipper align A B --a-layout obs|segra` when cli.py is free). Untested on real two-PC recordings; no clock-drift handling.
 - P4.2: `autoclipper retention [--json]` report-only (no delete code); manages rendered clips, inbox uploads, Segra-tagged files in AUTOCLIPPER_RECORDER_DIR. Hub loop (hub.replay_pass) now also ingests finished inbox uploads; `autoclipper upload-serve`. Service restarted after P4.2 (store v3 migrated).
+- P5.2: store v4 FTS5 table `search` kept current in set_judgement; `autoclipper search q [--reindex]`, GET /search; `autoclipper align A B` (defaults A=obs B=segra). Service restarted, DB at v4.
