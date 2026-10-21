@@ -20,8 +20,8 @@ Task specs are in PLAN.md.
 - [~] P2.9 judge comparison
 - [x] P2.10 hub service
 - [x] P3.1 Segra clone + build
-- [ ] P3.2 TarkovIntegration
-- [ ] P3.3 recorder defaults
+- [x] P3.2 TarkovIntegration
+- [~] P3.3 recorder defaults
 - [ ] P3.4 hub uploader
 - [ ] P4.1 long-recording ingestion
 - [ ] P4.2 retention
