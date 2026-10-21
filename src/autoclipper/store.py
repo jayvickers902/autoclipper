@@ -10,6 +10,8 @@ once). Replay identity is (sha256, path); a second path with the same hash is re
     clips       output paths (cut, share mp4, thumb, webp) and the posted flag
     labels      thumbs 'up'/'down' per candidate (clip_id too when it has a clip), for the review page
     segments    (v3) EFT raids inside a long recording: recording seconds, map, wall-clock raid start/end
+    search      (v4) FTS5 index of judged candidates (see search.py); filled by the migration, kept by
+                set_judgement
 
 v3 also gives replays a `kind` ('replay' for OBS replays, 'long' for ingested session/split recordings) and
 `started_at` (local wall clock of t=0, ISO; '' when unknown).
@@ -24,6 +26,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from . import search as search_index
 from .config import Settings
 from .safety import assert_writable
 
@@ -141,7 +144,10 @@ CREATE TABLE segments (
 );
 """
 
-MIGRATIONS = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3]  # index + 1 is the user_version it brings the db to
+# v4: full-text search (P5.2); the table is backfilled by `_backfill_search` right after the script.
+SCHEMA_V4 = search_index.SCHEMA
+
+MIGRATIONS = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4]  # index + 1 is the user_version it brings the db to
 SCHEMA_VERSION = len(MIGRATIONS)
 
 _REPLAY_COLS = frozenset({
@@ -185,6 +191,8 @@ class Store:
         for i in range(version, SCHEMA_VERSION):
             with self.con:
                 self.con.executescript(MIGRATIONS[i])
+                if i + 1 == 4:
+                    search_index.rebuild(self.con)
                 self.con.execute(f"PRAGMA user_version = {i + 1}")
 
     @property
@@ -298,6 +306,22 @@ class Store:
                 (status, keep, json.dumps(verdict) if verdict else None, model, cost_usd, int(called),
                  error[:500], time.time(), cid),
             )  # fmt: skip
+            self._reindex(cid)
+
+    def _reindex(self, cid: int) -> None:
+        """Keep the search index in step with a candidate; a broken index must not stop judging."""
+        try:
+            search_index.index_candidate(self.con, cid)
+        except sqlite3.Error:
+            pass
+
+    def rebuild_search(self) -> int:
+        """Refill the search index from scratch; returns the number of judged candidates seen."""
+        with self.con:
+            return search_index.rebuild(self.con)
+
+    def search(self, text: str, limit: int = 10) -> list[dict[str, Any]]:
+        return search_index.search(self.con, text, limit)
 
     # segments (long recordings)
 

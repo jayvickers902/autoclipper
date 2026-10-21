@@ -212,3 +212,30 @@ def test_align_container_files(tmp_path: Path) -> None:
     assert both.confidence >= 0.9
     with pytest.raises(al.MediaError):
         al.align(rec_a, rec_b, a_mic_track=9, b_voice_track=4)
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
+def test_align_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """`autoclipper align A B`: OBS layout against Segra layout, both directions, text and JSON."""
+    import json
+
+    from autoclipper.cli import main
+
+    offset, latency = 1.37, 0.1
+    a_mic, b_voice, b_mic, a_voice = scene(offset, latency, seconds=40, seed=21)
+    g = 0.5 * game(40, 31)
+    w = {name: _write_wav(tmp_path / f"{name}.wav", x) for name, x in {
+        "mix": g, "game": g, "a_voice": a_voice, "a_mic": a_mic,
+        "b_mic": b_mic, "b_game": g[: len(b_mic)], "b_voice": b_voice,
+    }.items()}  # fmt: skip
+    rec_a = _mux(tmp_path / "a.mp4", [w["mix"], w["game"], w["a_voice"], w["a_mic"]], ["aac"] * 4)
+    rec_b = _mux(tmp_path / "b.mka", [w["mix"], w["b_mic"], w["b_game"], w["b_voice"]], ["aac"] * 4)
+    assert main(["align", str(rec_a), str(rec_b), "--max-offset", "30"]) == 0
+    out = capsys.readouterr().out
+    assert "offset (t_b - t_a): +1.3" in out and "both-directions" in out
+    assert main(["align", str(rec_a), str(rec_b), "--a-layout", "obs", "--b-layout", "segra", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["offset_s"] == pytest.approx(offset, abs=0.03) and data["confidence"] >= 0.8
+    assert data["latency_s"] == pytest.approx(latency, abs=0.03)
+    # wrong layout for B: track 4 exists on both, so ask for more tracks than there are instead
+    assert main(["align", str(tmp_path / "missing.mp4"), str(rec_b)]) == 2

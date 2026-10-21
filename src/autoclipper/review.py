@@ -4,6 +4,7 @@
     GET  /replay/<id>     that replay's candidates: window, signal score, judge verdict, model, cost, clips
     GET  /clips           every rendered clip, newest first, with an inline video
     GET  /tolabel         judged candidates nobody has labelled yet (for the judge comparison)
+    GET  /search?q=...    full-text search (titles, summaries, map, transcript) over judged candidates
     POST /label           candidate_id + label (up|down) [+ next]; the only write, and only to `labels`
     GET  /media/<path>    files under output_dir only (Range supported), never replay_dir or anything else
 
@@ -25,6 +26,7 @@ from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from .config import Settings, bind_socket
+from .search import highlight
 from .store import Store
 
 MEDIA_TYPES = {
@@ -33,6 +35,8 @@ MEDIA_TYPES = {
 }  # fmt: skip
 ALLOWED_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "autoclipper.localhost"})
 CHUNK = 256 * 1024
+MAX_QUERY = 200
+SEARCH_LIMIT = 50
 MAX_BODY = 4096
 CSP = "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'; media-src 'self'"  # noqa: E501
 
@@ -105,6 +109,8 @@ th{color:#8c93a0;font-weight:500}.dim{color:#8c93a0}.num{text-align:right;font-v
 .card h3{margin:0 0 4px;font-size:15px}.meta{color:#8c93a0;font-size:12.5px;margin-bottom:6px}
 .media{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin:8px 0}
 video{max-width:560px;width:100%;background:#000;border-radius:6px}.media img{max-height:200px;border-radius:6px}
+form.srch{margin-left:auto;display:flex;gap:6px}form.srch input{background:#1b1e24;color:inherit;border:1px solid #333843;border-radius:6px;padding:3px 8px}
+.snip{color:#b4bac4;font-size:13px;margin:4px 0}mark{background:#5a4a1d;color:inherit;border-radius:3px}
 form.lab{display:inline-flex;gap:6px;margin:6px 0 0}
 form.lab button{font-size:18px;background:#23262d;border:1px solid #333843;border-radius:6px;padding:2px 12px;cursor:pointer;color:inherit}
 form.lab button.on{background:#2d4a7a;border-color:#7ab4ff}
@@ -138,10 +144,13 @@ def tag(text: Any, cls: str = "") -> str:
     return f'<span class="tag {esc(cls)}">{esc(text)}</span>'
 
 
-def page(title: str, body: str, to_label: int = 0) -> bytes:
+def page(title: str, body: str, to_label: int = 0, query: str = "") -> bytes:
     nav = (
         '<nav><b>autoclipper</b><a href="/">Replays</a><a href="/clips">Clips</a>'
-        f'<a href="/tolabel">To label ({to_label})</a></nav>'
+        f'<a href="/tolabel">To label ({to_label})</a>'
+        '<form class="srch" action="/search" method="get"><input type="search" name="q" '
+        f'value="{esc(query)}" placeholder="search clips and speech" maxlength="{MAX_QUERY}">'
+        "<button>Search</button></form></nav>"
     )
     doc = (
         f'<!doctype html><html lang="en"><meta charset="utf-8"><title>{esc(title)} - autoclipper</title>'
@@ -184,7 +193,7 @@ def clip_media(output_dir: Path, clip: dict[str, Any] | None) -> str:
 
 def candidate_card(
     output_dir: Path, c: dict[str, Any], clip: dict[str, Any] | None, label: str | None, nxt: str,
-    replay: dict[str, Any] | None = None,
+    replay: dict[str, Any] | None = None, extra: str = "",
 ) -> str:  # fmt: skip
     v = c["verdict"] or {}
     status = c["judge_status"]
@@ -203,7 +212,7 @@ def candidate_card(
         f'<div class="card" id="c{c["id"]}"><h3>{title}</h3>'
         f'<div class="meta">{where}#{c["idx"] + 1} {fmt_time(c["start"])}-{fmt_time(c["end"])} '
         f"&middot; {tag(status, status)} {verdict} &middot; {' &middot; '.join(detail)}</div>"
-        f"<div>{esc(v.get('summary', ''))}</div>{err}{clip_media(output_dir, clip)}"
+        f"<div>{esc(v.get('summary', ''))}</div>{extra}{err}{clip_media(output_dir, clip)}"
         f"{label_buttons(c['id'], label, nxt)}</div>"
     )
 
@@ -301,6 +310,27 @@ def clips_page(store: Store, output_dir: Path) -> tuple[str, str]:
     return "Clips", "".join(cards) or '<p class="dim">No clips yet.</p>'
 
 
+def search_page(store: Store, output_dir: Path, query: str) -> tuple[str, str]:
+    query = query.strip()[:MAX_QUERY]
+    if not query:
+        return "Search", '<p class="dim">Type words from a title, summary, map or what was said.</p>'
+    hits = store.search(query, SEARCH_LIMIT)
+    if not hits:
+        return "Search", f'<p class="dim">No clips match "{esc(query)}".</p>'
+    labels = store.latest_labels()
+    nxt = "/search?q=" + quote(query)
+    cands = _load(store, [{"id": h["candidate_id"], "replay_id": h["replay_id"]} for h in hits])
+    cards = [
+        candidate_card(
+            output_dir, c, store.clip_for(c["id"]), labels.get(c["id"]), nxt, rp,
+            extra=f'<div class="snip">{highlight(h["snippet"], esc)} &middot; '
+            f'<span class="dim">score {h["score"]:.2f}</span></div>',
+        )  # fmt: skip
+        for h, (c, rp) in zip(hits, cands, strict=True)
+    ]
+    return "Search", f'<p class="dim">{len(hits)} result(s) for "{esc(query)}".</p>' + "".join(cards)
+
+
 def to_label_count(store: Store) -> int:
     return store.con.execute(
         "SELECT COUNT(*) FROM candidates c WHERE c.judge_status = 'judged' "
@@ -374,18 +404,22 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if not self._host_ok():
             return self._error(HTTPStatus.FORBIDDEN, "unexpected Host header")
-        path = unquote(urlsplit(self.path).path)
+        parts = urlsplit(self.path)
+        path = unquote(parts.path)
         if path.startswith("/media/"):
             return self._media(path[len("/media/") :])
+        query = (parse_qs(parts.query).get("q") or [""])[0][:MAX_QUERY] if path == "/search" else ""
         with Store(self.settings) as store:
-            out = self._route(store, path)
+            out = self._route(store, path, query)
             if out is None:
                 return self._error(HTTPStatus.NOT_FOUND)
             title, body = out
-            self._send(HTTPStatus.OK, page(title, body, to_label_count(store)))
+            self._send(HTTPStatus.OK, page(title, body, to_label_count(store), query))
 
-    def _route(self, store: Store, path: str) -> tuple[str, str] | None:
+    def _route(self, store: Store, path: str, query: str = "") -> tuple[str, str] | None:
         out_dir = self.settings.output_dir
+        if path == "/search":
+            return search_page(store, out_dir, query)
         if path == "/":
             return replays_page(store)
         if path == "/clips":

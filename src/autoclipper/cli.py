@@ -85,6 +85,22 @@ def build_parser() -> argparse.ArgumentParser:
     report = sub.add_parser("report", help="counts, keeps, stage timings and judge calls")
     report.add_argument("--json", action="store_true")
 
+    search = sub.add_parser("search", help="full-text search of judged clips (title, summary, map, speech)")
+    search.add_argument("query", nargs="+", help="words to look for")
+    search.add_argument("--limit", type=int, default=10, metavar="N")
+    search.add_argument("--json", action="store_true")
+    search.add_argument("--reindex", action="store_true", help="rebuild the search index first")
+
+    align = sub.add_parser(
+        "align", help="time offset between two friends' recordings (t_b - t_a), from their voice tracks"
+    )
+    align.add_argument("a", type=Path, help="recording A")
+    align.add_argument("b", type=Path, help="recording B")
+    align.add_argument("--a-layout", choices=("obs", "segra"), default="obs", help="track layout of A")
+    align.add_argument("--b-layout", choices=("obs", "segra"), default="segra", help="track layout of B")
+    align.add_argument("--max-offset", type=float, default=300.0, metavar="S", help="largest |offset| (s)")
+    align.add_argument("--json", action="store_true")
+
     serve = sub.add_parser("serve", help="the local review page (default http://127.0.0.1:4180/)")
     serve.add_argument("--port", type=int, default=None, help="override AUTOCLIPPER_PORT (0 = any free port)")
     return parser
@@ -257,6 +273,65 @@ def _cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_search(args: argparse.Namespace) -> int:
+    from autoclipper.config import Settings
+    from autoclipper.review import fmt_time
+    from autoclipper.search import MARK_CLOSE, MARK_OPEN
+    from autoclipper.store import Store
+
+    if args.limit < 1:
+        print("autoclipper: --limit must be at least 1", file=sys.stderr)
+        return 2
+    with Store(Settings.from_env()) as store:
+        if args.reindex:
+            print(f"reindexed {store.rebuild_search()} judged candidate(s)", file=sys.stderr)
+        hits = store.search(" ".join(args.query), args.limit)
+    for h in hits:
+        h["snippet"] = h["snippet"].replace(MARK_OPEN, "[").replace(MARK_CLOSE, "]")
+    if args.json:
+        print(json.dumps(hits, indent=1))
+        return 0
+    if not hits:
+        print("no matches")
+    for i, h in enumerate(hits, 1):
+        when = f"{fmt_time(h['start'])}-{fmt_time(h['end'])}"
+        print(f"{i}. {h['score']:.2f}  {Path(h['replay_path']).name}  {when}  {h['title']}")
+        print(f"   {h['snippet']}")
+        print(f"   clip: {h['clip_path'] or '-'}")
+    return 0
+
+
+def _cmd_align(args: argparse.Namespace) -> int:
+    from autoclipper.align import OBS_TRACKS, SEGRA_TRACKS, align
+    from autoclipper.media import MediaError
+
+    layouts = {"obs": OBS_TRACKS, "segra": SEGRA_TRACKS}
+    la, lb = layouts[args.a_layout], layouts[args.b_layout]
+    for p in (args.a, args.b):
+        if not p.is_file():
+            print(f"autoclipper: {p} is not a file", file=sys.stderr)
+            return 2
+    try:
+        r = align(
+            args.a, args.b, a_mic_track=la["mic"], b_voice_track=lb["voice"], b_mic_track=lb["mic"],
+            a_voice_track=la["voice"], max_offset_s=args.max_offset,
+        )  # fmt: skip
+    except MediaError as e:
+        print(f"autoclipper: {e}", file=sys.stderr)
+        return 1
+    latency = r.details.get("latency_s")
+    if args.json:
+        print(json.dumps({"offset_s": r.offset_s, "confidence": r.confidence, "method": r.method,
+                          "latency_s": latency, "details": r.details}, indent=1))  # fmt: skip
+        return 0
+    print(f"offset (t_b - t_a): {r.offset_s:+.3f} s")
+    print(f"confidence: {r.confidence:.2f}  ({r.method})")
+    print(f"discord latency: {f'{latency:.3f} s' if latency is not None else 'unknown'}")
+    if r.details.get("note"):
+        print(f"note: {r.details['note']}")
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     import dataclasses
 
@@ -297,6 +372,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_retention(args)
     elif args.command == "report":
         return _cmd_report(args)
+    elif args.command == "search":
+        return _cmd_search(args)
+    elif args.command == "align":
+        return _cmd_align(args)
     elif args.command == "serve":
         return _cmd_serve(args)
     return 0
