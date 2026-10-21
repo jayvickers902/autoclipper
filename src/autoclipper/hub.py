@@ -6,14 +6,17 @@ left for the next start (every stage is resumable), then the HTTP server is shut
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from . import media
 from .config import bind_socket
 from .discord import DiscordPoster
+from .ingest import IngestOptions, ingest_inbox
 from .pipeline import Context, ReplayResult, _clamp, process_pass
 from .review import make_server
 from .scan import StabilityTracker
@@ -55,6 +58,24 @@ def post_new_clips(ctx: Context, results: list[ReplayResult], poster: Any) -> in
     return posted
 
 
+def ingest_uploads(ctx: Context) -> list[ReplayResult]:
+    """Ingest finished inbox uploads (P3.4/P4.1). EFT logs come from AUTOCLIPPER_EFT_LOGS like `ingest`."""
+    logs = os.environ.get("AUTOCLIPPER_EFT_LOGS")
+    return ingest_inbox(ctx, IngestOptions(eft_logs=Path(logs) if logs else None))
+
+
+def replay_pass(ctx: Context, tracker: StabilityTracker | None, stable_wait: float) -> list[ReplayResult]:
+    """One loop iteration: new replays, then finished uploads. An inbox failure keeps the replay results."""
+    results = process_pass(ctx, tracker=tracker, stable_wait=stable_wait)
+    if ctx.should_stop():
+        return results
+    try:
+        results += ingest_uploads(ctx)
+    except Exception as exc:
+        ctx.log(f"inbox ingest failed: {type(exc).__name__}: {exc}")
+    return results
+
+
 def pass_line(results: list[ReplayResult], posted: int | None) -> str:
     done = [r for r in results if not r.skipped]
     by: dict[str, int] = {}
@@ -92,7 +113,7 @@ def run_hub(
     try:
         while not stop.is_set():
             try:
-                results = process_pass(ctx, tracker=tracker, stable_wait=stable_wait)
+                results = replay_pass(ctx, tracker, stable_wait)
                 posted = post_new_clips(ctx, results, poster) if post else None
                 ctx.log(pass_line(results, posted))
             except Exception as exc:  # one bad pass (unreadable dir, store error) must not end the service
@@ -106,4 +127,3 @@ def run_hub(
         server.server_close()
         thread.join(timeout=5)
     return 0
-

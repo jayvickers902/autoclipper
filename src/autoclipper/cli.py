@@ -73,6 +73,15 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--overlap", type=int, default=10, metavar="S", help="context read around a chunk")
     _add_pipeline_flags(ingest)
 
+    sub.add_parser(
+        "upload-serve", help="the upload receiver for recorders (off unless AUTOCLIPPER_UPLOAD_PORT is set)"
+    )
+
+    retention = sub.add_parser(
+        "retention", help="report-only plan: oldest own files to drop to get under AUTOCLIPPER_RETENTION_GB"
+    )
+    retention.add_argument("--json", action="store_true")
+
     report = sub.add_parser("report", help="counts, keeps, stage timings and judge calls")
     report.add_argument("--json", action="store_true")
 
@@ -143,7 +152,7 @@ def _cmd_backfill(args: argparse.Namespace) -> int:
 
 
 def _cmd_watch(args: argparse.Namespace) -> int:
-    from autoclipper.pipeline import process_pass
+    from autoclipper.hub import replay_pass
     from autoclipper.scan import StabilityTracker
 
     ctx = _context(args, retry_failed=args.retry_failed)
@@ -151,7 +160,7 @@ def _cmd_watch(args: argparse.Namespace) -> int:
     with ctx.store:
         try:
             while True:
-                results = process_pass(ctx, tracker=tracker, stable_wait=args.stable_wait)
+                results = replay_pass(ctx, tracker, args.stable_wait)
                 if results or args.once:
                     print(_summary(results), flush=True)
                 if args.once:
@@ -214,6 +223,29 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
     return 1 if any(r.status == "failed" for r in results) else 0
 
 
+def _cmd_upload_serve(args: argparse.Namespace) -> int:
+    from autoclipper.config import Settings
+    from autoclipper.uploads import serve
+
+    try:
+        serve(Settings.from_env(), log=lambda msg: print(msg, flush=True))
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+def _cmd_retention(args: argparse.Namespace) -> int:
+    from autoclipper.config import Settings
+    from autoclipper.retention import format_plan, plan
+    from autoclipper.store import Store
+
+    settings = Settings.from_env()
+    with Store(settings) as store:
+        result = plan(settings, store)
+    print(json.dumps(result.to_dict(), indent=1) if args.json else format_plan(result))
+    return 0
+
+
 def _cmd_report(args: argparse.Namespace) -> int:
     from autoclipper.config import Settings
     from autoclipper.report import build_report, format_report
@@ -259,6 +291,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_run(args)
     elif args.command == "ingest":
         return _cmd_ingest(args)
+    elif args.command == "upload-serve":
+        return _cmd_upload_serve(args)
+    elif args.command == "retention":
+        return _cmd_retention(args)
     elif args.command == "report":
         return _cmd_report(args)
     elif args.command == "serve":

@@ -47,6 +47,7 @@ from .scan import settle
 from .signals.analyze import VERSION as TIMELINE_VERSION
 from .signals.analyze import assign_roles
 from .store import TERMINAL
+from .uploads import inbox_root
 
 CHUNK_S = 300
 OVERLAP_S = 10
@@ -471,6 +472,53 @@ def ingest(ctx: Context, target: Path, iopts: IngestOptions | None = None) -> li
             ingest_group(ctx, group, iopts)
         except Exception as exc:
             _fail(ctx, [r for r in group if not r.skip], exc)
+    return results
+
+
+def inbox_uploads(inbox: Path) -> list[Path]:
+    """The video of every finished upload, `<inbox>/<user>/<sha256>/<file>` with a meta.json beside it.
+
+    `.staging/` (and any other dot directory) holds half-received uploads and is never read.
+    """
+    if not inbox.is_dir():
+        return []
+    out: list[Path] = []
+    for user in sorted(inbox.iterdir()):
+        if user.name.startswith(".") or not user.is_dir():
+            continue
+        for upload in sorted(user.iterdir()):
+            meta = upload / "meta.json"
+            if not upload.is_dir() or not meta.is_file():
+                continue
+            try:
+                name = str(json.loads(meta.read_text()).get("file") or "")
+            except (OSError, ValueError):
+                continue
+            video = upload / name
+            if name and Path(name).name == name and video.suffix.lower() in VIDEO_EXTS and video.is_file():
+                out.append(video)
+    return out
+
+
+def ingest_inbox(ctx: Context, iopts: IngestOptions | None = None) -> list[ReplayResult]:
+    """Ingest the finished uploads that still need work, one at a time (checks `ctx.should_stop` between).
+
+    Idempotent and cheap to repeat: a file the store already shows as finished is skipped by a stat lookup,
+    without hashing or probing. Uploads are complete by construction (renamed into place), so there is no
+    size-stability wait.
+    """
+    iopts = replace(iopts or IngestOptions(), stable_wait=0.0)
+    results: list[ReplayResult] = []
+    for video in inbox_uploads(inbox_root(ctx.settings)):
+        if ctx.should_stop():
+            break
+        st = video.stat()
+        row = ctx.store.replay_by_stat(video, st.st_size, st.st_mtime)
+        if row and (
+            row["status"] in TERMINAL or (row["status"] == "failed" and not ctx.options.retry_failed)
+        ):
+            continue
+        results += ingest(ctx, video, iopts)
     return results
 
 

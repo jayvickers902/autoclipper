@@ -68,6 +68,10 @@ class Settings:
     upload_tokens: str = field(default="", repr=False)
     upload_inbox: Path | None = None  # None = data_dir / "inbox"
     upload_max_gb: float = 64.0
+    # Retention (P4.2, report-only): rolling cap over files autoclipper or the Segra fork created.
+    retention_gb: float = 40.0
+    retention_min_age_days: float = 7.0
+    recorder_dir: Path | None = None  # None = no recorder files are considered
 
     @classmethod
     def from_env(cls, dotenv: bool = True) -> Settings:
@@ -112,6 +116,9 @@ class Settings:
             upload_tokens=e("AUTOCLIPPER_UPLOAD_TOKENS", d.upload_tokens),
             upload_inbox=Path(v) if (v := e("AUTOCLIPPER_UPLOAD_INBOX")) else None,
             upload_max_gb=float(e("AUTOCLIPPER_UPLOAD_MAX_GB", d.upload_max_gb)),
+            retention_gb=float(e("AUTOCLIPPER_RETENTION_GB") or d.retention_gb),
+            retention_min_age_days=float(e("AUTOCLIPPER_RETENTION_MIN_AGE_DAYS") or d.retention_min_age_days),
+            recorder_dir=Path(v) if (v := e("AUTOCLIPPER_RECORDER_DIR")) else None,
         )
 
 
