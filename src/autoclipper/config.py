@@ -44,12 +44,13 @@ class Settings:
     # Keep a Claude verdict when its score reaches this (P2.9: score >= 7 matched Sonnet on 0.88 of a sample,
     # Haiku's own keep flag on 0.71). 0 = trust the model's keep flag.
     keep_min_score: int = 7
-    # Run caps on Claude calls, counted over every ledger row ever (failed and timed-out calls included).
+    # Run caps on Claude calls, counted over ledger rows since the run epoch (`python -m autoclipper.judge
+    # new-run`; every row when unset), failed and timed-out calls included.
     run_max_haiku: int = 300
     run_max_sonnet: int = 40
     judge_timeout_s: float = 120.0
     claude_bin: str = "claude"
-    # Not derived from data_dir: the run caps count every row ever, so moving data_dir must not reset them.
+    # Not derived from data_dir: the run caps count ledger rows, so moving data_dir must not reset them.
     # AUTOCLIPPER_LEDGER exists for tests (Guard refuses the default path under pytest).
     ledger_path: Path = PROJECT_ROOT / "data" / "judge-ledger.sqlite"
     needs_jay_path: Path = PROJECT_ROOT / ".autopilot" / "NEEDS-JAY.md"

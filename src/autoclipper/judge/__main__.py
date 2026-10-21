@@ -1,4 +1,4 @@
-"""`python -m autoclipper.judge status | clear-pause | one <replay> [--rank N] [--raw-dir DIR]`."""
+"""`python -m autoclipper.judge status | clear-pause | new-run | one <replay> [--rank N] [--raw-dir DIR]`."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status", help="guard state: pause, caps, tokens, utilization")
     sub.add_parser("clear-pause", help="lift a pause (e.g. after re-running `claude` /login)")
+    sub.add_parser("new-run", help="start a new run epoch: the Haiku/Sonnet run caps count from now")
     one = sub.add_parser("one", help="analyze a replay and judge one candidate (makes a real Claude call)")
     one.add_argument("replay")
     one.add_argument("--rank", type=int, default=0, help="which candidate, 0 = best")
@@ -32,6 +33,12 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "clear-pause":
         guard.clear_pause()
         print("pause cleared")
+        return 0
+    if a.cmd == "new-run":
+        before, after = guard.new_run()
+        caps = {"haiku": s.run_max_haiku, "sonnet": s.run_max_sonnet}
+        for label, counts in (("before", before), ("after", after)):
+            print(f"{label}: " + ", ".join(f"{f} {n}/{caps[f]}" for f, n in counts.items()))
         return 0
 
     from ..candidates import find_candidates

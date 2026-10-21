@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import Settings
+from ..gpu_gate import GpuGate
 from .claude_cli import CallResult, run_claude
 from .frames import extract_frames, frame_times, image_block
 from .guard import Guard, GuardRefused
@@ -105,12 +106,17 @@ def _claude(
             with c.guard.slot(role, model, c.cid) as row:
                 res = run_claude(c.s.claude_bin, model, system, c.schema, content, c.s.judge_timeout_s)
                 data = None
-                if res.ok:
-                    try:
-                        data = validate(res.structured, c.start, c.end)
-                    except SchemaError as e:
-                        res.ok, res.status, res.error = False, "invalid", f"schema: {e}"
-                c.guard.record(row, res)
+                try:
+                    if res.ok:
+                        try:
+                            data = validate(res.structured, c.start, c.end)
+                        except SchemaError as e:
+                            res.ok, res.status, res.error = False, "invalid", f"schema: {e}"
+                except BaseException as e:  # the call happened: record it as failed, pause rules included
+                    res.ok, res.status, res.error = False, "error", f"{type(e).__name__}: {e}"
+                    raise
+                finally:
+                    c.guard.record(row, res)
         except GuardRefused as e:
             out.attempts.append(f"{model} refused: {e.reason}")
             return None
@@ -127,7 +133,30 @@ def _claude(
     return None
 
 
-def _fallback(c: _Ctx, out: JudgeResult) -> JudgeResult:
+def _unjudged(c: _Ctx, out: JudgeResult) -> JudgeResult:
+    """No verdict: queue the candidate so it is judged again later."""
+    out.verdict = Verdict(
+        start=c.start, end=c.end, thumb_t=float(c.cand.get("peak_t") or c.start), source="none",
+        queued=True, error="; ".join(out.attempts)[-500:], candidate_id=c.cid,
+    )  # fmt: skip
+    return out
+
+
+_GATE: GpuGate | None = None
+
+
+def default_gate() -> GpuGate:
+    """One shared GPU gate per process (it caches the process list for ~30 s)."""
+    global _GATE
+    _GATE = _GATE or GpuGate()
+    return _GATE
+
+
+def _fallback(c: _Ctx, out: JudgeResult, gate: GpuGate | None) -> JudgeResult:
+    """The local ollama judge on the Windows GPU, never while a game runs (GpuGate)."""
+    if (gate or default_gate()).games_running():
+        out.attempts.append("ollama skipped: a game is running (or the GPU gate cannot tell)")
+        return _unjudged(c, out)
     queued = c.s.judge == "claude-cli"
     images = [b64 for _, b64 in c.frames()] if c.s.ollama_vision else []
     o = ollama_judge(c.s, SYSTEM_JUDGE, c.text, images, c.schema)
@@ -140,13 +169,9 @@ def _fallback(c: _Ctx, out: JudgeResult) -> JudgeResult:
     status = "ok" if data else "unavailable" if o.unavailable else "error"
     c.guard.record_fallback(o.model, status, o.duration_s, err, c.cid)
     out.attempts.append(f"ollama {o.model}: {status}" + (f" ({err[:160]})" if err else ""))
-    if data:
-        out.verdict = Verdict(**data, source="ollama", model=o.model, queued=queued, candidate_id=c.cid)
-    else:
-        out.verdict = Verdict(
-            start=c.start, end=c.end, thumb_t=float(c.cand.get("peak_t") or c.start), source="none",
-            queued=True, error="; ".join(out.attempts)[-500:], candidate_id=c.cid,
-        )  # fmt: skip
+    if not data:
+        return _unjudged(c, out)
+    out.verdict = Verdict(**data, source="ollama", model=o.model, queued=queued, candidate_id=c.cid)
     return out
 
 
@@ -160,6 +185,8 @@ def judge_candidate(
     guard: Guard | None = None,
     rejudge_borderline: bool = False,
     raw_dir: Path | str | None = None,
+    ollama_fallback: bool = True,
+    gpu_gate: GpuGate | None = None,
 ) -> JudgeResult:
     """Judge one candidate window (a candidates.Candidate or its dict) of `replay_path`.
 
@@ -167,6 +194,10 @@ def judge_candidate(
     failure; then the local ollama judge. A fallback verdict has queued=True so Claude re-judges it later;
     source "none" means nothing could judge it. With rejudge_borderline, a borderline Haiku verdict goes to
     polish(mode="rejudge"). Raises MediaError if no frame decodes, LiveCallInTests on a real call in tests.
+
+    ollama_fallback=False skips ollama when Claude gives no verdict (the pipeline queues such candidates and
+    would discard the ollama verdict); with settings.judge != "claude-cli" ollama is the judge and runs.
+    Ollama never runs while `gpu_gate` (default: a shared GpuGate) reports a game; then it is queued.
     """
     c = _ctx(replay_path, candidate, timeline, settings, candidate_id, guard, raw_dir)
     out = JudgeResult(verdict=Verdict(candidate_id=c.cid))
@@ -183,7 +214,9 @@ def judge_candidate(
                 if rejudge_borderline and is_borderline(out.verdict):
                     _polish(c, out, "rejudge")
                 return out
-    return _fallback(c, out)
+        if not ollama_fallback:
+            return _unjudged(c, out)
+    return _fallback(c, out, gpu_gate)
 
 
 def _polish(c: _Ctx, out: JudgeResult, mode: str) -> JudgeResult:

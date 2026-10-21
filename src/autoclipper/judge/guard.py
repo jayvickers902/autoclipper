@@ -3,8 +3,10 @@
 - One call at a time across processes (`fcntl.flock` on `judge.lock` next to the ledger).
 - A ledger row is reserved (status 'started') before each call and updated afterwards, so crashed,
   failed and timed-out calls all count toward the caps.
-- Caps: per hour (judge role), per day (polish role), and per run over every row ever (Haiku / Sonnet).
-- Pauses persist in SQLite: rate-limit rejection, missing rate_limit_event (except on a timeout), usage-limit
+- Caps: per hour (judge role), per day (polish role), and per run (Haiku / Sonnet): rows since the run
+  epoch (`state.run_epoch`, set by `python -m autoclipper.judge new-run`), or every row when it is unset.
+- Pauses persist in SQLite: rate-limit rejection, missing rate_limit_event or a missing 5-hour/7-day
+  utilization in it (except on a timeout), usage-limit
   errors, two failed calls in a row, 5-hour or 7-day utilization over the thresholds, and auth failures
   (fatal: only `clear-pause` lifts it).
 """
@@ -25,6 +27,7 @@ from ..config import Settings
 from .claude_cli import CallResult
 
 MIN_PAUSE_S = 15 * 60
+WEEKLY_PAUSE_S = 6 * 3600  # 7-day threshold crossed and no seven_day resetsAt given
 CLAUDE_ROLES = ("judge", "polish")
 NEEDS_JAY_MARKER = "## Claude judge: CLI sign-in failed"
 
@@ -168,11 +171,25 @@ class Guard:
             return f"unknown role {role!r}"
         return None
 
+    def _epoch(self, con: sqlite3.Connection) -> float | None:
+        """Start of the current run: the run caps count rows with ts >= it. None = count every row."""
+        v = self._get(con, "run_epoch")
+        return float(v) if isinstance(v, (int, float)) else None
+
     def _family_count(self, con: sqlite3.Connection, fam: str) -> int:
         rows = con.execute(
-            f"SELECT model, COUNT(*) FROM calls WHERE role IN {CLAUDE_ROLES} GROUP BY model"
+            f"SELECT model, COUNT(*) FROM calls WHERE role IN {CLAUDE_ROLES} AND ts >= ? GROUP BY model",
+            (self._epoch(con) or 0.0,),
         ).fetchall()
         return sum(n for m, n in rows if family(m) == fam)
+
+    def new_run(self, now: float | None = None) -> tuple[dict, dict]:
+        """Start a new run epoch (the run caps restart at 0); returns the run counts before and after."""
+        with self._db() as con:
+            before = {f: self._family_count(con, f) for f in ("haiku", "sonnet")}
+            self._set(con, "run_epoch", time.time() if now is None else now)
+            after = {f: self._family_count(con, f) for f in ("haiku", "sonnet")}
+        return before, after
 
     def check(self, role: str, model: str) -> str | None:
         """The reason a call would be refused right now, or None (advisory; slot() re-checks)."""
@@ -248,6 +265,8 @@ class Guard:
         rl = res.rate_limit
         if rl is None and res.status != "timeout":
             self.pause(floor, "no rate_limit_event in the call output")
+        elif rl is not None and (rl.five_hour is None or rl.seven_day is None) and res.status != "timeout":
+            self.pause(floor, "rate_limit_event without the 5-hour/7-day utilization")
         if not res.ok and self._last_two_failed():
             self.pause(floor, f"two failed Claude calls in a row; last: {res.error[:120]}")
         if rl and rl.status == "rejected":
@@ -258,8 +277,10 @@ class Guard:
                 f"5-hour utilization {rl.five_hour:.2f} >= {self.s.judge_max_5h}",
             )
         if rl and rl.seven_day is not None and rl.seven_day >= self.s.judge_max_7d:
+            reset = rl.seven_day_resets
             self.pause(
-                until(rl.seven_day_resets), f"7-day utilization {rl.seven_day:.2f} >= {self.s.judge_max_7d}"
+                reset if reset and reset > now else now + WEEKLY_PAUSE_S,
+                f"7-day utilization {rl.seven_day:.2f} >= {self.s.judge_max_7d}",
             )
         if res.limit_hit:
             self.pause(max((rl.resets_at if rl else 0) or 0, floor), f"usage limit: {res.result_text[-120:]}")
@@ -294,6 +315,7 @@ class Guard:
                 "SELECT COUNT(*) FROM calls WHERE role='polish' AND ts > ?", (now - 86400,)
             ).fetchone()[0]
             haiku, sonnet = self._family_count(con, "haiku"), self._family_count(con, "sonnet")
+            epoch = self._epoch(con)
             fallback = con.execute("SELECT COUNT(*) FROM calls WHERE role='fallback'").fetchone()[0]
             totals = con.execute(
                 f"SELECT COALESCE(SUM(input_tokens),0)+COALESCE(SUM(cache_read_tokens),0)"
@@ -316,6 +338,7 @@ class Guard:
                 "run_max_haiku": self.s.run_max_haiku,
                 "sonnet_total": sonnet,
                 "run_max_sonnet": self.s.run_max_sonnet,
+                "run_epoch": _iso(epoch) if epoch else None,
                 "fallback_total": fallback,
             },  # fmt: skip
             "tokens": {"input": totals[0], "output": totals[1], "notional_cost_usd": round(totals[2], 4)},

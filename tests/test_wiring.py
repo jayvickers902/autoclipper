@@ -106,6 +106,20 @@ def test_replay_pass_ingests_upload_once(ctx: Context, monkeypatch) -> None:
     assert replay_pass(ctx, None, 0) == []
 
 
+def test_queued_upload_skipped_while_judge_paused(ctx: Context, monkeypatch) -> None:
+    calls: list[Path] = []
+    monkeypatch.setattr(ingest_mod, "ingest", lambda c, target, iopts=None: calls.append(target) or [])
+    up = put_upload(ctx.settings.data_dir / "inbox", "bob", "a" * 64, "g.mp4")
+    st = up.stat()
+    row = ctx.store.upsert_replay(up, "a" * 64, st.st_size, st.st_mtime)
+    ctx.store.update_replay(row["id"], status="queued")
+    ctx.judge.paused = lambda: "run cap reached: 300/300 haiku calls"  # type: ignore[method-assign]
+    assert ingest_inbox(ctx) == [] and calls == []
+    ctx.judge.paused = lambda: None  # type: ignore[method-assign]
+    ingest_inbox(ctx)
+    assert calls == [up]
+
+
 def test_replay_pass_survives_inbox_failure(ctx: Context, monkeypatch) -> None:
     def boom(c: Context) -> list[ReplayResult]:
         raise OSError("inbox unreadable")

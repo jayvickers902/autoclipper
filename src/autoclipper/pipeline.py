@@ -215,14 +215,19 @@ def _timeline(ctx: Context, p: Path, rid: int, row: dict) -> dict:
     return timeline
 
 
+def judge_paused(ctx: Context) -> str | None:
+    """The judge's `paused()` reason (pause, cap, game running), or None when it can judge now."""
+    paused_fn = getattr(ctx.judge, "paused", None)
+    return paused_fn() if callable(paused_fn) else None
+
+
 def _judge(ctx: Context, p: Path, rid: int, timeline: dict) -> None:
     todo = ctx.store.candidates(rid, ("pending", "queued"))
     if not todo:
         if not ctx.store.stage_done(rid, "judge"):
             ctx.store.record_stage(rid, "judge", 0.0)
         return
-    paused_fn = getattr(ctx.judge, "paused", None)
-    paused = paused_fn() if callable(paused_fn) else None
+    paused = judge_paused(ctx)
 
     def run() -> None:
         nonlocal paused
@@ -285,10 +290,15 @@ def _files_exist(clip: dict) -> bool:
 
 
 def render_clip(ctx: Context, replay: Path, cand: dict) -> int:
-    """cut + share encode + thumbnail + webp into output_dir/<replay-stem>/; returns the clip id."""
+    """cut + share encode + thumbnail + webp into output_dir/<replay-stem>-<sha8>/; returns the clip id.
+
+    The hash suffix keeps two uploads with the same filename apart. Clips rendered before it (in
+    output_dir/<replay-stem>/) keep working: the store holds their paths.
+    """
     s = ctx.settings
     start, end, thumb_t = _clamp(cand["verdict"] or {}, cand)
-    out_dir = assert_writable(s.output_dir / replay.stem, s)
+    sha = ctx.store.replay(cand["replay_id"])["sha256"]
+    out_dir = assert_writable(s.output_dir / f"{replay.stem}-{sha[:8]}", s)
     base = f"clip{cand['idx'] + 1:02d}_{int(start):04d}s"
     paths = {
         "cut": assert_writable(out_dir / f"{base}_cut.mp4", s),
@@ -328,8 +338,7 @@ def process_pass(
     files = [f for f in candidate_files(directory or s.replay_dir, s.output_dir) if needs_work(ctx, f)]
     stable = tracker.observe(files) if tracker else settle(files, stable_wait)
     results: list[ReplayResult] = []
-    paused_fn = getattr(ctx.judge, "paused", None)
-    paused = paused_fn() if callable(paused_fn) else None
+    paused = judge_paused(ctx)
     for f in files:
         if (limit is not None and len(results) >= limit) or ctx.should_stop():
             break

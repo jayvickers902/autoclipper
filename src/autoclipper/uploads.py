@@ -34,6 +34,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from autoclipper.config import Settings, bind_socket
+from autoclipper.safety import assert_writable
 
 API = "/v1/uploads"
 MAX_CHUNK = 64 * 1024 * 1024
@@ -370,6 +371,7 @@ def make_server(
     server = UploadServer(sock.getsockname()[:2], Handler, bind_and_activate=False)
     server.socket.close()
     server.socket = sock
+    assert_writable(inbox_root(settings), settings)  # the inbox must be under data_dir or output_dir
     server.inbox = Inbox(inbox_root(settings), int(settings.upload_max_gb * 1024**3))
     server.tokens = tokens
     server.quiet = quiet

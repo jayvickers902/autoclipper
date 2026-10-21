@@ -1,8 +1,9 @@
 """The pipeline's view of the judge: a small Protocol, an adaptor onto `autoclipper.judge`, and a fake.
 
 `autoclipper.judge` is imported lazily, at call time, and only `judge_candidate(replay_path, candidate,
-timeline, settings)` and `Guard(settings).status()` are touched. If their signatures or result shapes change,
-fix `ClaudeJudge.__call__` / `ClaudeJudge.paused` / `to_outcome` here and nothing else.
+timeline, settings, ollama_fallback=False)`, `Guard(settings).check()` and `core.default_gate()` are
+touched. If their signatures or result shapes change, fix `ClaudeJudge.__call__` / `ClaudeJudge.paused`
+/ `to_outcome` here and nothing else.
 """
 
 from __future__ import annotations
@@ -70,15 +71,21 @@ class ClaudeJudge:
         self.settings = settings
 
     def paused(self) -> str | None:
+        """Why no candidate can be judged now: a guard pause or cap (Claude), or a running game (ollama)."""
+        if self.settings.judge != "claude-cli":
+            from autoclipper.judge.core import default_gate
+
+            return "a game is running; the ollama judge waits" if default_gate().games_running() else None
         from autoclipper.judge.guard import Guard
 
-        st = Guard(self.settings).status()
-        return str(st.get("reason") or "claude paused") if st.get("paused") else None
+        return Guard(self.settings).check("judge", self.settings.judge_model)
 
     def __call__(self, replay: Path, candidate: Candidate, timeline: dict) -> JudgeOutcome:
         import autoclipper.judge as judge_pkg
 
-        out = to_outcome(judge_pkg.judge_candidate(replay, candidate, timeline, self.settings))
+        # No ollama fallback: its verdict would be queued (and discarded) by the pipeline anyway.
+        res = judge_pkg.judge_candidate(replay, candidate, timeline, self.settings, ollama_fallback=False)
+        out = to_outcome(res)
         return apply_keep_threshold(out, self.settings.keep_min_score)
 
 

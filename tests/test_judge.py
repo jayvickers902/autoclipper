@@ -129,9 +129,18 @@ class Env:
         return judge_candidate("/nonexistent/replay.mp4", CAND, TIMELINE, s, **kw)
 
 
+class StubGate:
+    def __init__(self, games: bool = False):
+        self.games = games
+
+    def games_running(self) -> bool:
+        return self.games
+
+
 @pytest.fixture
 def env(tmp_path, monkeypatch) -> Env:
     monkeypatch.setattr(core, "extract_frames", lambda path, times: [(t, "AAAA") for t in times])
+    monkeypatch.setattr(core, "default_gate", lambda: StubGate(False))  # no game running
     return Env(tmp_path)
 
 
@@ -512,6 +521,118 @@ def test_judge_setting_ollama_skips_claude(env):
     finally:
         oll.close()
     assert r.verdict.source == "ollama" and not r.verdict.queued and env.calls() == []
+
+
+def test_missing_utilization_pauses(env):
+    env.plan(["no_utilization"])
+    t0 = time.time()
+    assert env.judge().verdict.source == "claude-haiku"
+    st = env.guard().status()
+    assert st["paused"] and "utilization" in st["reason"]
+    assert st["until_epoch"] >= t0 + 15 * 60
+
+
+def test_seven_day_threshold_without_reset_pauses_six_hours(env):
+    env.plan(["weekly_high_no_reset"])
+    t0 = time.time()
+    env.judge()
+    st = env.guard().status()
+    assert st["paused"] and "7-day" in st["reason"]
+    assert st["until_epoch"] == pytest.approx(t0 + 6 * 3600, abs=5)
+
+
+def test_error_after_the_call_still_records_and_pauses(env, monkeypatch):
+    env.plan(["weekly_high"])
+
+    def broken(*a, **k):
+        raise ValueError("bug after the call")
+
+    monkeypatch.setattr(core, "validate", broken)
+    with pytest.raises(ValueError, match="bug after"):
+        env.judge()
+    (row,) = env.rows()
+    assert row["status"] == "error" and row["seven_day"] == pytest.approx(0.65)
+    assert "ValueError" in row["error"]
+    st = env.guard().status()
+    assert st["paused"] and "7-day" in st["reason"] and st["counts"]["haiku_total"] == 1
+
+
+def test_run_epoch_scopes_run_caps(env):
+    s = dataclasses.replace(env.settings, run_max_haiku=2, run_max_sonnet=1)
+    g = Guard(s)
+    for _ in range(2):
+        with g.slot("judge", "claude-haiku-5-5"):
+            pass
+    with g.slot("polish", "claude-sonnet-5-5"):
+        pass
+    assert "run cap" in g.check("judge", "claude-haiku-5-5")  # no epoch: every row counts
+    assert g.status()["counts"]["run_epoch"] is None
+    before, after = g.new_run(now=time.time() + 1)
+    assert before == {"haiku": 2, "sonnet": 1} and after == {"haiku": 0, "sonnet": 0}
+    assert g.check("judge", "claude-haiku-5-5") is None and g.check("polish", "claude-sonnet-5-5") is None
+    st = g.status()["counts"]
+    assert st["haiku_total"] == 0 and st["sonnet_total"] == 0 and st["run_epoch"]
+    assert len(env.rows()) == 3  # nothing deleted
+
+
+def test_new_run_command(env, monkeypatch, capsys):
+    from autoclipper.judge.__main__ import main
+
+    monkeypatch.setenv("AUTOCLIPPER_LEDGER", str(env.ledger))
+    monkeypatch.setattr("autoclipper.config.load_dotenv", lambda *a, **k: None)
+    with env.guard().slot("judge", "claude-haiku-5-5"):
+        pass
+    assert main(["new-run"]) == 0
+    out = capsys.readouterr().out
+    assert "before: haiku 1/300, sonnet 0/40" in out and "after: haiku 0/300, sonnet 0/40" in out
+
+
+def test_refused_claude_without_fallback_skips_ollama(env):
+    oll = FakeOllama()
+    try:
+        s = dataclasses.replace(env.settings, run_max_haiku=0, ollama_url=oll.url)
+        r = env.judge(settings=s, ollama_fallback=False)
+    finally:
+        oll.close()
+    assert r.verdict.source == "none" and r.verdict.queued and "run cap" in r.verdict.error
+    assert oll.requests == [] and env.calls() == [] and env.rows() == []
+
+
+def test_ollama_never_runs_while_a_game_runs(env):
+    oll = FakeOllama()
+    try:
+        s = dataclasses.replace(env.settings, judge="ollama", ollama_url=oll.url)
+        r = env.judge(settings=s, gpu_gate=StubGate(True))
+        env.plan(["error_result"])
+        r2 = env.judge(settings=dataclasses.replace(s, judge="claude-cli"), gpu_gate=StubGate(True))
+    finally:
+        oll.close()
+    assert r.verdict.source == "none" and r.verdict.queued and "game" in r.verdict.error
+    assert r2.verdict.source == "none" and r2.verdict.queued
+    assert oll.requests == [] and all(x["role"] != "fallback" for x in env.rows())
+
+
+def test_claude_judge_paused_reports_caps_and_games(env, monkeypatch):
+    from autoclipper.judging import ClaudeJudge
+
+    assert ClaudeJudge(env.settings).paused() is None
+    assert "run cap" in ClaudeJudge(dataclasses.replace(env.settings, run_max_haiku=0)).paused()
+    assert "hourly cap" in ClaudeJudge(dataclasses.replace(env.settings, judge_max_calls_per_hour=0)).paused()
+    env.guard().pause(time.time() + 600, "test pause")
+    assert "test pause" in ClaudeJudge(env.settings).paused()
+    ollama = dataclasses.replace(env.settings, judge="ollama")
+    assert ClaudeJudge(ollama).paused() is None
+    monkeypatch.setattr(core, "default_gate", lambda: StubGate(True))
+    assert "game" in ClaudeJudge(ollama).paused()
+
+
+def test_claude_judge_never_falls_back_to_ollama(env, monkeypatch):
+    from autoclipper.judging import ClaudeJudge
+
+    monkeypatch.setattr(core, "ollama_judge", lambda *a, **k: pytest.fail("ollama called"))
+    env.plan(["error_result"])
+    out = ClaudeJudge(env.settings)(Path("/nonexistent/replay.mp4"), CAND, TIMELINE)
+    assert out.queued and len(env.calls()) == 2
 
 
 # --- parsing, schema, frames, config ----------------------------------------------------------------

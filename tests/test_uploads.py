@@ -8,6 +8,7 @@ import threading
 import pytest
 
 from autoclipper.config import Settings
+from autoclipper.safety import WriteRefused
 from autoclipper.uploads import (
     authenticate,
     make_server,
@@ -214,6 +215,21 @@ def test_finalize_on_repost_after_crash(hub):
     (inbox / ".staging" / "jay" / SHA / "data.part").write_bytes(DATA)
     assert call(srv, "POST", "/v1/uploads", meta()) == (200, {"state": "complete", "offset": len(DATA)})
     assert (inbox / "jay" / SHA / "2026-10-21 20-15-03.mp4").read_bytes() == DATA
+
+
+def test_inbox_outside_data_dir_refused_at_startup(tmp_path):
+    s = Settings(
+        data_dir=tmp_path / "data", output_dir=tmp_path / "out", replay_dir=tmp_path / "replays",
+        upload_tokens=f"jay:{JAY}", upload_inbox=tmp_path / "elsewhere",
+    )  # fmt: skip
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    try:
+        with pytest.raises(WriteRefused):
+            make_server(s, sock)
+    finally:
+        sock.close()
+    assert not (tmp_path / "elsewhere").exists()
 
 
 def test_off_by_default(monkeypatch, tmp_path):

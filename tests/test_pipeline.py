@@ -66,6 +66,10 @@ def put(settings: Settings, fixtures_dir: Path, fixture: str, name: str = NAME) 
     return dest
 
 
+def clip_dir(settings: Settings, src: Path) -> Path:
+    return settings.output_dir / f"{src.stem}-{hashlib.sha256(src.read_bytes()).hexdigest()[:8]}"
+
+
 def tree_hashes(root: Path) -> dict[str, str]:
     return {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.glob("Replay *.mp4"))}
 
@@ -136,7 +140,7 @@ def test_process_keeps_and_is_idempotent(ctx: Context, settings: Settings, fixtu
     before = tree_hashes(settings.replay_dir)
     res = process_replay(ctx, src)
     assert res.status == "done" and res.candidates == 1 and res.keeps == 1 and res.clips == 1
-    out = settings.output_dir / src.stem
+    out = clip_dir(settings, src)
     files = sorted(p.name for p in out.iterdir())
     assert sorted(Path(f).suffix for f in files) == [".jpg", ".mp4", ".mp4", ".webp"]
     assert all(p.stat().st_size > 0 for p in out.iterdir())
@@ -204,6 +208,64 @@ def test_queued_until_claude_is_back(ctx: Context, settings: Settings, fixtures_
     assert ctx.store.stages(res.replay_id)["judge"]["runs"] == 2
 
 
+def test_same_name_uploads_get_separate_clip_dirs(
+    ctx: Context, settings: Settings, fixtures_dir: Path, tmp_path: Path
+) -> None:
+    a = put(settings, fixtures_dir, "firefight.mp4")
+    assert process_replay(ctx, a).clips == 1
+    other = tmp_path / "inbox" / "bob"  # a second upload with the same filename, different content
+    other.mkdir(parents=True)
+    b = other / NAME
+    shutil.copy(fixtures_dir / "firefight.mp4", b)
+    with b.open("ab") as f:
+        f.write(b"\0" * 64)  # trailing bytes: same video, different hash
+    assert process_replay(ctx, b).clips == 1
+    dirs = sorted(p.name for p in settings.output_dir.iterdir())
+    assert dirs == sorted([clip_dir(settings, a).name, clip_dir(settings, b).name]) and len(dirs) == 2
+    assert all(len(list(settings.output_dir.joinpath(d).iterdir())) == 4 for d in dirs)
+
+
+def test_clips_in_legacy_dirs_are_not_rerendered(
+    ctx: Context, settings: Settings, fixtures_dir: Path
+) -> None:
+    src = put(settings, fixtures_dir, "firefight.mp4")
+    res = process_replay(ctx, src)
+    cand = ctx.store.candidates(res.replay_id)[0]
+    clip = ctx.store.clip_for(cand["id"])
+    legacy = settings.output_dir / src.stem  # the pre-R2 layout: output_dir/<stem>/
+    legacy.mkdir()
+    moved = {}
+    for k in ("cut_path", "share_path", "thumb_path", "webp_path"):
+        dest = legacy / Path(clip[k]).name
+        Path(clip[k]).rename(dest)
+        moved[k] = str(dest)
+    ctx.store.save_clip(cand["id"], out_dir=str(legacy), **moved)
+    ctx.store.update_replay(res.replay_id, status="new")
+    process_replay(ctx, src)
+    assert ctx.store.clip_for(cand["id"])["share_path"] == moved["share_path"]
+    assert not any(clip_dir(settings, src).iterdir())  # nothing rendered again
+
+
+def test_capped_claude_judge_queues_without_calls(
+    settings: Settings, fixtures_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import autoclipper.judge.core as core
+
+    monkeypatch.setattr(core, "ollama_judge", lambda *a, **k: pytest.fail("ollama called"))
+    monkeypatch.setattr(core, "run_claude", lambda *a, **k: pytest.fail("claude called"))
+    s = Settings(
+        replay_dir=settings.replay_dir, output_dir=settings.output_dir, data_dir=settings.data_dir,
+        ledger_path=tmp_path / "ledger.sqlite", run_max_haiku=0, keep_min_score=0,
+    )  # fmt: skip
+    with Store(s) as store:
+        ctx = Context(s, store, judging.ClaudeJudge(s), Options(whisper=False))
+        res = process_replay(ctx, put(s, fixtures_dir, "firefight.mp4"))
+        assert res.status == "queued" and res.queued == res.candidates > 0
+        cand = store.candidates(res.replay_id)[0]
+        assert cand["attempts"] == 0 and "run cap" in cand["error"]
+        assert process_pass(ctx, stable_wait=0) == []  # still capped: the queued replay is skipped
+
+
 def test_paused_judge_is_not_called(ctx: Context, settings: Settings, fixtures_dir: Path) -> None:
     ctx.judge.pause = "paused"
     res = process_replay(ctx, put(settings, fixtures_dir, "firefight.mp4"))
@@ -232,7 +294,7 @@ def test_duplicate_hash_not_processed_twice(ctx: Context, settings: Settings, fi
     assert res.status == "duplicate" and res.skipped
     assert ctx.store.replay(res.replay_id)["duplicate_of"] is not None
     assert ctx.judge.calls == 1
-    assert [p.name for p in settings.output_dir.iterdir()] == [first.stem]
+    assert [p.name for p in settings.output_dir.iterdir()] == [clip_dir(settings, first).name]
 
 
 def test_pass_scans_only_top_level_replays(ctx: Context, settings: Settings, fixtures_dir: Path) -> None:
@@ -337,12 +399,12 @@ def test_cli_process_report_backfill_watch(
 
     assert main(["process", str(src), *flags]) == 0
     assert "done" in capsys.readouterr().out
-    assert len(list((settings.output_dir / src.stem).iterdir())) == 4
+    assert len(list(clip_dir(settings, src).iterdir())) == 4
 
     other = put(settings, fixtures_dir, "four_tracks.mp4", "Replay 2026-01-02 10-00-00.mp4")
     assert main(["backfill", str(settings.replay_dir), "--limit", "5", *flags]) == 0
     assert "1 replay(s) processed" in capsys.readouterr().out
-    assert (settings.output_dir / other.stem).is_dir()
+    assert clip_dir(settings, other).is_dir()
 
     assert main(["watch", "--once", *flags]) == 0
     assert "nothing to do" in capsys.readouterr().out
@@ -353,7 +415,7 @@ def test_cli_process_report_backfill_watch(
     assert main(["report", "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
     assert data["clips"] == {"rendered": 2, "posted": 0} and data["stages"]["render"]["n"] == 2
-    assert main(["process", str(settings.output_dir / src.stem / "x.mp4"), *flags]) == 2
+    assert main(["process", str(clip_dir(settings, src) / "x.mp4"), *flags]) == 2
 
 
 def test_report_counts(ctx: Context, settings: Settings, fixtures_dir: Path) -> None:

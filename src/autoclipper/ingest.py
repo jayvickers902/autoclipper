@@ -40,6 +40,7 @@ from .pipeline import (
     _tagger,
     _timed,
     judge_and_render,
+    judge_paused,
     register,
 )  # fmt: skip
 from .safety import assert_writable
@@ -509,6 +510,7 @@ def ingest_inbox(ctx: Context, iopts: IngestOptions | None = None) -> list[Repla
     """
     iopts = replace(iopts or IngestOptions(), stable_wait=0.0)
     results: list[ReplayResult] = []
+    paused = None
     for video in inbox_uploads(inbox_root(ctx.settings)):
         if ctx.should_stop():
             break
@@ -518,6 +520,10 @@ def ingest_inbox(ctx: Context, iopts: IngestOptions | None = None) -> list[Repla
             row["status"] in TERMINAL or (row["status"] == "failed" and not ctx.options.retry_failed)
         ):
             continue
+        if row and row["status"] == "queued":
+            paused = paused or judge_paused(ctx)
+            if paused:  # nothing to do until the judge can run again
+                continue
         results += ingest(ctx, video, iopts)
     return results
 
