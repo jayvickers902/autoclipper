@@ -7,7 +7,7 @@ Task specs are in PLAN.md.
 - [x] P0.2 ports claim
 - [x] P0.3 fixtures
 - [x] R1 design review
-- [~] P1 OBS stopgap
+- [x] P1 OBS stopgap
 - [x] P2.1 media primitives
 - [~] P2.2a signals: loudness, onsets, CPU whisper, keywords
 - [ ] P2.2b signals: AudioSet tags, GPU whisper
@@ -41,3 +41,4 @@ Record decisions, gotchas, and anything a restarted session must know here.
 - R1 for P2.8: queue candidates until reset instead of falling back to the 27B; run backfill with run_in_background.
 - R1 for P1: robocopy exit >= 8 is failure, verify backup file count before editing; restore by renaming current dir and copying the backup back (never /MIR); add a Display Capture below the per-exe captures; keep websocket password out of .env/logs.
 - P2.1 API: autoclipper.media {probe, keyframe_times, detect_black, detect_frozen, is_dead_capture, extract_audio(path, stream_index|None, out), audio_tracks, cut_copy, share_encode->EncodeResult, nvenc_works, thumbnail, preview_webp}; MediaError. Real replays have keyframes ~every 4 s.
+- P1: OBS websocket on 4455 (password in obs-websocket config.json, never print). Test replay in Videos/autoclipper/obs-test/. In-game hook check is NEEDS-JAY.

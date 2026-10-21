@@ -6,7 +6,10 @@ authors = [
     { name = "Jay Vickers", email = "jayvickers@gmail.com" }
 ]
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "faster-whisper>=1.2.1",
+    "numpy>=2.5.4",
+]
 
 [project.scripts]
 autoclipper = "autoclipper.cli:main"
@@ -30,4 +33,7 @@ select = ["E", "F", "W", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["real_media: needs real replay files under /mnt/c/Users/jayvi/Videos (skipped when absent)"]
+markers = [
+    "real_media: needs real replay files under /mnt/c/Users/jayvi/Videos (skipped when absent)",
+    "whisper: runs a faster-whisper model (CPU; first run downloads it); deselect with -m 'not whisper'",
+]
