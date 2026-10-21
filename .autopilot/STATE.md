@@ -9,10 +9,10 @@ Task specs are in PLAN.md.
 - [x] R1 design review
 - [x] P1 OBS stopgap
 - [x] P2.1 media primitives
-- [~] P2.2a signals: loudness, onsets, CPU whisper, keywords
+- [x] P2.2a signals: loudness, onsets, CPU whisper, keywords
 - [ ] P2.2b signals: AudioSet tags, GPU whisper
-- [ ] P2.3 candidate windows
-- [ ] P2.4 judge (claude CLI) + usage guard
+- [~] P2.3 candidate windows
+- [~] P2.4 judge (claude CLI) + usage guard
 - [ ] P2.5 store + pipeline + CLI
 - [ ] P2.6 review page
 - [ ] P2.7 Discord poster
@@ -42,3 +42,4 @@ Record decisions, gotchas, and anything a restarted session must know here.
 - R1 for P1: robocopy exit >= 8 is failure, verify backup file count before editing; restore by renaming current dir and copying the backup back (never /MIR); add a Display Capture below the per-exe captures; keep websocket password out of .env/logs.
 - P2.1 API: autoclipper.media {probe, keyframe_times, detect_black, detect_frozen, is_dead_capture, extract_audio(path, stream_index|None, out), audio_tracks, cut_copy, share_encode->EncodeResult, nvenc_works, thumbnail, preview_webp}; MediaError. Real replays have keyframes ~every 4 s.
 - P1: OBS websocket on 4455 (password in obs-websocket config.json, never print). Test replay in Videos/autoclipper/obs-test/. In-game hook check is NEEDS-JAY.
+- P2.2a API: autoclipper.signals.analyze(path, out_json=None, *, whisper=True, whisper_model=None, bias_keywords=False, check_dead=True, tagger=None); schema v1 in signals/analyze.py docstring; seconds keyed by role. large-v3-turbo CPU int8 ~30 s per 59 s replay. Commit only your task's files while another agent is mid-task (git add <paths>).
