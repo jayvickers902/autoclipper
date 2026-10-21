@@ -18,6 +18,7 @@ from typing import Any
 from . import media, signals
 from .candidates import Candidate, find_candidates
 from .config import Settings
+from .gpu_gate import GpuGate
 from .judging import Judge, JudgeOutcome
 from .safety import assert_writable
 from .scan import StabilityTracker, candidate_files, file_sha256, settle
@@ -44,6 +45,8 @@ class Context:
     judge: Judge
     options: Options = field(default_factory=Options)
     log: Callable[[str], None] = lambda _msg: None
+    gpu_gate: GpuGate | None = None  # set by `run`: encodes go to the CPU while a game is running
+    should_stop: Callable[[], bool] = lambda: False  # checked between replays (SIGTERM in `run`)
 
 
 @dataclass
@@ -277,9 +280,8 @@ def render_clip(ctx: Context, replay: Path, cand: dict) -> int:
     }
     out_dir.mkdir(parents=True, exist_ok=True)
     media.cut_copy(replay, start, end, paths["cut"])
-    enc = media.share_encode(
-        replay, start, end, paths["share"], max_mb=ctx.options.max_mb, encoder=ctx.options.encoder
-    )
+    encoder = ctx.gpu_gate.encoder(ctx.options.encoder) if ctx.gpu_gate else ctx.options.encoder
+    enc = media.share_encode(replay, start, end, paths["share"], max_mb=ctx.options.max_mb, encoder=encoder)
     media.thumbnail(replay, thumb_t, paths["thumb"])
     webp_start = min(max(thumb_t - WEBP_SECONDS / 2, start), max(start, end - WEBP_SECONDS))
     media.preview_webp(replay, webp_start, paths["webp"], seconds=WEBP_SECONDS)
@@ -311,7 +313,7 @@ def process_pass(
     paused_fn = getattr(ctx.judge, "paused", None)
     paused = paused_fn() if callable(paused_fn) else None
     for f in files:
-        if limit is not None and len(results) >= limit:
+        if (limit is not None and len(results) >= limit) or ctx.should_stop():
             break
         if f not in stable:
             continue

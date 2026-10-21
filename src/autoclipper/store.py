@@ -125,6 +125,7 @@ _REPLAY_COLS = frozenset({
 })  # fmt: skip
 _CLIP_COLS = frozenset({
     "status", "out_dir", "cut_path", "share_path", "thumb_path", "webp_path", "share_bytes", "encoder", "error",  # noqa: E501
+    "posted", "posted_at",
 })  # fmt: skip
 
 
@@ -290,6 +291,15 @@ class Store:
             cols = ", ".join(f"{k} = ?" for k in fields)
             self.con.execute(f"UPDATE clips SET {cols} WHERE candidate_id = ?", (*fields.values(), cid))
         return self.con.execute("SELECT id FROM clips WHERE candidate_id = ?", (cid,)).fetchone()["id"]
+
+    def unposted_clips(self, rid: int) -> list[dict[str, Any]]:
+        """Rendered, kept clips of a replay not yet posted, each with its candidate row under `candidate`."""
+        out = []
+        for c in self.candidates(rid, ("judged",)):
+            clip = self.clip_for(c["id"])
+            if c["keep"] and clip and clip["status"] == "ok" and not clip["posted"]:
+                out.append({**clip, "candidate": c})
+        return out
 
     def add_label(self, clip_id: int, label: str, note: str = "") -> int:
         """Label a clip (and so its candidate)."""

@@ -18,7 +18,7 @@ Task specs are in PLAN.md.
 - [x] P2.7 Discord poster
 - [~] P2.8 backfill + report
 - [ ] P2.9 judge comparison
-- [ ] P2.10 hub service
+- [~] P2.10 hub service
 - [ ] P3.1 Segra clone + build
 - [ ] P3.2 TarkovIntegration
 - [ ] P3.3 recorder defaults

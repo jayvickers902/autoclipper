@@ -44,6 +44,13 @@ def build_parser() -> argparse.ArgumentParser:
     watch.add_argument("--retry-failed", action="store_true")
     _add_pipeline_flags(watch)
 
+    run = sub.add_parser("run", help="the hub: review page + watch loop in one process (SIGTERM stops)")
+    run.add_argument("--interval", type=float, default=30.0, metavar="S")
+    run.add_argument("--port", type=int, default=None, help="override AUTOCLIPPER_PORT (0 = any free port)")
+    run.add_argument("--retry-failed", action="store_true")
+    run.add_argument("--post", action="store_true", help="post newly kept clips to the Discord test webhook")
+    _add_pipeline_flags(run)
+
     report = sub.add_parser("report", help="counts, keeps, stage timings and judge calls")
     report.add_argument("--json", action="store_true")
 
@@ -128,6 +135,34 @@ def _cmd_watch(args: argparse.Namespace) -> int:
             return 0
 
 
+def _cmd_run(args: argparse.Namespace) -> int:
+    import dataclasses
+    import signal
+    import threading
+
+    from autoclipper.gpu_gate import GpuGate
+    from autoclipper.hub import run_hub
+
+    ctx = _context(args, retry_failed=args.retry_failed)
+    if args.port is not None:
+        ctx.settings = dataclasses.replace(ctx.settings, port=args.port)
+    ctx.gpu_gate = GpuGate(log=ctx.log)
+    stop = threading.Event()
+
+    def on_signal(signum: int, _frame: object) -> None:
+        if stop.is_set():  # a second signal abandons the current stage
+            raise KeyboardInterrupt
+        ctx.log(f"autoclipper: signal {signum}, finishing the current replay then stopping")
+        stop.set()
+
+    signal.signal(signal.SIGTERM, on_signal)
+    signal.signal(signal.SIGINT, on_signal)
+    with ctx.store:
+        return run_hub(
+            ctx, stop=stop, interval=args.interval, stable_wait=args.stable_wait, post=args.post
+        )
+
+
 def _cmd_report(args: argparse.Namespace) -> int:
     from autoclipper.config import Settings
     from autoclipper.report import build_report, format_report
@@ -169,6 +204,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_backfill(args)
     elif args.command == "watch":
         return _cmd_watch(args)
+    elif args.command == "run":
+        return _cmd_run(args)
     elif args.command == "report":
         return _cmd_report(args)
     elif args.command == "serve":
