@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -61,6 +61,13 @@ class Settings:
     # Code-enforced Discord caps: clips counted persistently (all processes), texts per run.
     post_max_clips: int = 5
     post_max_texts: int = 20
+    # Upload receiver (P3.4, docs/UPLOADER.md). Off unless AUTOCLIPPER_UPLOAD_PORT is set (no default port).
+    upload_host: str = "127.0.0.1"
+    upload_port: int = 0
+    # "user:token,user2:token2" (each token >= 16 chars). Secret: .env only, kept out of repr.
+    upload_tokens: str = field(default="", repr=False)
+    upload_inbox: Path | None = None  # None = data_dir / "inbox"
+    upload_max_gb: float = 64.0
 
     @classmethod
     def from_env(cls, dotenv: bool = True) -> Settings:
@@ -100,6 +107,11 @@ class Settings:
             discord_test_webhook_url=e("DISCORD_TEST_WEBHOOK_URL", d.discord_test_webhook_url),
             post_max_clips=int(e("AUTOCLIPPER_POST_MAX_CLIPS", d.post_max_clips)),
             post_max_texts=int(e("AUTOCLIPPER_POST_MAX_TEXTS", d.post_max_texts)),
+            upload_host=e("AUTOCLIPPER_UPLOAD_HOST", d.upload_host),
+            upload_port=int(e("AUTOCLIPPER_UPLOAD_PORT") or 0),
+            upload_tokens=e("AUTOCLIPPER_UPLOAD_TOKENS", d.upload_tokens),
+            upload_inbox=Path(v) if (v := e("AUTOCLIPPER_UPLOAD_INBOX")) else None,
+            upload_max_gb=float(e("AUTOCLIPPER_UPLOAD_MAX_GB", d.upload_max_gb)),
         )
 
 
