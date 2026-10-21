@@ -11,7 +11,7 @@ import pytest
 from autoclipper.cli import main
 from autoclipper.config import Settings
 from autoclipper.review import make_server, parse_range, resolve_media
-from autoclipper.store import SCHEMA_V1, Store
+from autoclipper.store import SCHEMA_V1, SCHEMA_VERSION, Store
 
 VIDEO = bytes(range(256)) * 8  # 2048 bytes
 
@@ -277,7 +277,7 @@ def test_label_migration_from_v1(settings: Settings, ids: dict[str, int]):
     con.commit()
     con.close()
     with Store(settings, path) as st:
-        assert st.version == 2
+        assert st.version == SCHEMA_VERSION
         assert st.latest_labels() == {1: "up"}
 
 

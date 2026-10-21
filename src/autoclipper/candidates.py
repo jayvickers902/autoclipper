@@ -3,11 +3,13 @@
     find_candidates(timeline)  -> list[Candidate]   best windows first, at most AUTOCLIPPER_MAX_CANDIDATES
     interest_curve(timeline)   -> np.ndarray        fused per-hop interest, normalised per replay
 
-Pipeline: fights (transients with gaps <= FIGHT_GAP) and strong keywords ("clip that", said after the
-action) become windows; overlapping or nearly touching windows merge; long ones are cut to the most
+Pipeline: fights (transients with gaps <= FIGHT_GAP), strong keywords ("clip that", said after the
+action) and hints (OBS chapter markers, Segra bookmarks: `kind: "hint"` events with their own `pre`/`post`)
+become windows; overlapping or nearly touching windows merge; long ones are cut to the most
 interesting MAX_LEN seconds, short ones padded to MIN_LEN; ends then snap to the quietest nearby spot that
 is not inside a burst. Windows are scored on the *absolute* interest scale (curve / FLOOR) so a quiet
-replay yields nothing even though its curve is normalised to its own maximum.
+replay yields nothing even though its curve is normalised to its own maximum. A window holding a hint is
+always returned (forced past `min_score` and the `max_n` cap).
 
 `python -m autoclipper.candidates <timeline.json>` prints the candidates of a saved timeline.
 """
@@ -34,6 +36,7 @@ WEIGHTS: dict[str, float] = {
     "tag_high": 1.0,  # AudioSet gunshot / explosion (scaled by the tag score)
     "tag_mid": 0.5,  # laughter / shout: the funny / hype boost
     "tag_music": 0.0,  # not additive: music damps the transient and loud components (see MUSIC_DAMP)
+    "hint": 1.5,  # chapter marker / Segra bookmark: box over [t - pre, t + post]
 }
 SIGMA = 1.0  # s, Gaussian smoothing of transient density
 LOUD_REF_DB = 20.0
@@ -100,6 +103,14 @@ def _transients(timeline: dict) -> list[tuple[float, float]]:
 
 def _keywords(timeline: dict) -> list[dict]:
     return [e for e in timeline["events"] if e["kind"] == "keyword"]
+
+
+def _hints(timeline: dict) -> list[dict]:
+    return [e for e in timeline["events"] if e["kind"] == "hint"]
+
+
+def _hint_span(h: dict) -> tuple[float, float]:
+    return h["t"] - float(h.get("pre", KW_PRE)), h["t"] + float(h.get("post", KW_POST))
 
 
 def _transient_role(timeline: dict) -> str | None:
@@ -174,6 +185,8 @@ def _components(timeline: dict) -> dict[str, np.ndarray]:
             comp["keyword_weak"] = np.maximum(
                 comp["keyword_weak"], _box(n, kw["t"] - WEAK_LOOKBACK, kw["end"])
             )
+    for h in _hints(timeline):
+        comp["hint"] = np.maximum(comp["hint"], _box(n, *_hint_span(h)))
     for vrole in (timeline.get("sources") or {}).get("speech") or []:
         entries = (timeline.get("seconds") or {}).get(vrole)
         if entries:
@@ -237,6 +250,7 @@ def _raw_windows(timeline: dict) -> list[_Win]:
             owner.end = max(owner.end, end + KW_FIGHT_POST)
         else:
             wins.append(_Win(t - KW_PRE, end + KW_POST))
+    wins += [_Win(*_hint_span(h)) for h in _hints(timeline)]
     return wins
 
 
@@ -339,20 +353,26 @@ def find_candidates(
     curve = raw / max(float(raw.max()), FLOOR)
     kws = _keywords(timeline)
     strong = [k for k in kws if k["phrase"] in STRONG_KEYWORDS]
+    hints = _hints(timeline)
+    anchors = strong + [{"t": h["t"], "end": h["t"]} for h in hints]  # kept inside a capped window
     transients = _transients(timeline)
     out: list[Candidate] = []
+    forced: list[Candidate] = []
     for w in _merge(_raw_windows(timeline)):
-        w = _pad(_cap(_pad(w, duration), curve, strong), duration)
+        w = _pad(_cap(_pad(w, duration), curve, anchors), duration)
         w = _snap_ends(w, duration, timeline)
         inside = [(t, st) for t, st in transients if w.start <= t <= w.end]
         in_kws = [k for k in kws if w.start <= k["t"] <= w.end]
-        score, _ = _score(raw, w, len(inside), any(k["phrase"] in STRONG_KEYWORDS for k in in_kws))
-        if score < min_score:
+        in_hints = [h for h in hints if w.start <= h["t"] <= w.end]
+        strong_in = any(k["phrase"] in STRONG_KEYWORDS for k in in_kws) or bool(in_hints)
+        score, _ = _score(raw, w, len(inside), strong_in)
+        if score < min_score and not in_hints:
             continue
         reasons = []
         if len(inside) >= 2 or any(st >= VERY_STRONG for _, st in inside):
             reasons.append(f"fight:{len(inside)} shot{'s' if len(inside) != 1 else ''}")
         reasons += [f"keyword:{k['phrase']}" for k in in_kws]
+        reasons += [f"hint:{h['phrase']}" for h in in_hints]
         a, b = int(w.start / HOP), max(int(w.start / HOP) + 1, int(math.ceil(w.end / HOP)))
         if comp["speech"][a:b].max(initial=0.0) >= 0.5:
             reasons.append("excited speech")
@@ -361,11 +381,11 @@ def find_candidates(
         dens = comp["transient"][a:b]
         seg = dens if dens.size and dens.max() > 0 else curve[a:b]
         peak_t = (a + int(seg.argmax())) * HOP if seg.size else w.start
-        out.append(
-            Candidate(w.start, w.end, score, reasons, len(inside), [k["phrase"] for k in in_kws], peak_t)
-        )
+        cand = Candidate(w.start, w.end, score, reasons, len(inside), [k["phrase"] for k in in_kws], peak_t)
+        (forced if in_hints else out).append(cand)
     out.sort(key=lambda c: -c.score)
-    return out[: max_n if max_n is not None else max_candidates()]
+    out = out[: max(0, (max_n if max_n is not None else max_candidates()) - len(forced))]
+    return sorted(forced + out, key=lambda c: -c.score)
 
 
 def main(argv: list[str]) -> int:

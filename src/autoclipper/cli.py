@@ -58,6 +58,21 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--post", action="store_true", help="post newly kept clips to the Discord test webhook")
     _add_pipeline_flags(run)
 
+    ingest = sub.add_parser(
+        "ingest", help="long recordings (Segra sessions, OBS split files): chunked, EFT raids, chapter hints"
+    )
+    ingest.add_argument("target", type=Path, help="a recording, or a directory searched recursively")
+    ingest.add_argument(
+        "--eft-logs",
+        type=Path,
+        default=os.environ.get("AUTOCLIPPER_EFT_LOGS") or None,
+        help="EFT Logs directory (log_*/...application_000.log) to label raids and maps; "
+        "or AUTOCLIPPER_EFT_LOGS",
+    )
+    ingest.add_argument("--chunk", type=int, default=300, metavar="S", help="analysis chunk length (s)")
+    ingest.add_argument("--overlap", type=int, default=10, metavar="S", help="context read around a chunk")
+    _add_pipeline_flags(ingest)
+
     report = sub.add_parser("report", help="counts, keeps, stage timings and judge calls")
     report.add_argument("--json", action="store_true")
 
@@ -174,6 +189,31 @@ def _cmd_run(args: argparse.Namespace) -> int:
         )
 
 
+def _cmd_ingest(args: argparse.Namespace) -> int:
+    from autoclipper.ingest import IngestOptions, ingest
+
+    if args.chunk < 30 or not 0 <= args.overlap < args.chunk:
+        print("autoclipper: --chunk must be >= 30 and --overlap in [0, chunk)", file=sys.stderr)
+        return 2
+    ctx = _context(args, retry_failed=True)
+    with ctx.store:
+        target = args.target.resolve()
+        if not target.exists():
+            print(f"autoclipper: {target} does not exist", file=sys.stderr)
+            return 2
+        if target.is_relative_to(ctx.settings.output_dir.resolve()):
+            print("autoclipper: refusing to ingest from the output directory", file=sys.stderr)
+            return 2
+        opts = IngestOptions(
+            eft_logs=args.eft_logs, chunk_s=args.chunk, overlap_s=args.overlap, stable_wait=args.stable_wait
+        )
+        results = ingest(ctx, target, opts)
+    for r in results:
+        print(f"{r.path.name}: {r.status}" + (f" ({r.note})" if r.note else ""))
+    print(_summary(results))
+    return 1 if any(r.status == "failed" for r in results) else 0
+
+
 def _cmd_report(args: argparse.Namespace) -> int:
     from autoclipper.config import Settings
     from autoclipper.report import build_report, format_report
@@ -217,6 +257,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_watch(args)
     elif args.command == "run":
         return _cmd_run(args)
+    elif args.command == "ingest":
+        return _cmd_ingest(args)
     elif args.command == "report":
         return _cmd_report(args)
     elif args.command == "serve":

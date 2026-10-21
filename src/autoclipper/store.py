@@ -9,6 +9,10 @@ once). Replay identity is (sha256, path); a second path with the same hash is re
     candidates  window + signal score; judge_status pending|judged|queued|failed, verdict JSON, model, cost
     clips       output paths (cut, share mp4, thumb, webp) and the posted flag
     labels      thumbs 'up'/'down' per candidate (clip_id too when it has a clip), for the review page
+    segments    (v3) EFT raids inside a long recording: recording seconds, map, wall-clock raid start/end
+
+v3 also gives replays a `kind` ('replay' for OBS replays, 'long' for ingested session/split recordings) and
+`started_at` (local wall clock of t=0, ISO; '' when unknown).
 """
 
 from __future__ import annotations
@@ -117,11 +121,32 @@ ALTER TABLE labels_new RENAME TO labels;
 CREATE INDEX labels_candidate ON labels(candidate_id);
 """
 
-MIGRATIONS = [SCHEMA_V1, SCHEMA_V2]  # index + 1 is the user_version it brings the db to
+# v3: long-recording ingestion (P4.1).
+SCHEMA_V3 = """
+ALTER TABLE replays ADD COLUMN kind TEXT NOT NULL DEFAULT 'replay';
+ALTER TABLE replays ADD COLUMN started_at TEXT NOT NULL DEFAULT '';
+CREATE TABLE segments (
+    id INTEGER PRIMARY KEY,
+    replay_id INTEGER NOT NULL REFERENCES replays(id),
+    idx INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    start REAL NOT NULL,
+    "end" REAL NOT NULL,
+    map_id TEXT NOT NULL DEFAULT '',
+    label TEXT NOT NULL DEFAULT '',
+    wall_start TEXT NOT NULL DEFAULT '',
+    wall_end TEXT NOT NULL DEFAULT '',
+    interrupted INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (replay_id, idx)
+);
+"""
+
+MIGRATIONS = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3]  # index + 1 is the user_version it brings the db to
 SCHEMA_VERSION = len(MIGRATIONS)
 
 _REPLAY_COLS = frozenset({
     "duration", "status", "dead", "dead_reason", "duplicate_of", "timeline_path", "error", "mtime", "size",
+    "kind", "started_at",
 })  # fmt: skip
 _CLIP_COLS = frozenset({
     "status", "out_dir", "cut_path", "share_path", "thumb_path", "webp_path", "share_bytes", "encoder", "error",  # noqa: E501
@@ -273,6 +298,25 @@ class Store:
                 (status, keep, json.dumps(verdict) if verdict else None, model, cost_usd, int(called),
                  error[:500], time.time(), cid),
             )  # fmt: skip
+
+    # segments (long recordings)
+
+    def set_segments(self, rid: int, segments: Iterable[dict]) -> None:
+        """Replace a recording's segments (dicts as eft.Segment.to_dict())."""
+        with self.con:
+            self.con.execute("DELETE FROM segments WHERE replay_id = ?", (rid,))
+            for i, sg in enumerate(segments):
+                self.con.execute(
+                    'INSERT INTO segments(replay_id, idx, kind, start, "end", map_id, label, wall_start, '
+                    "wall_end, interrupted) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (rid, i, sg.get("kind", "raid"), sg["start"], sg["end"], sg.get("map_id") or "",
+                     sg.get("map_name") or sg.get("label") or "", sg.get("raid_start", ""),
+                     sg.get("raid_end", ""), int(bool(sg.get("interrupted")))),
+                )  # fmt: skip
+
+    def segments(self, rid: int) -> list[dict[str, Any]]:
+        rows = self.con.execute("SELECT * FROM segments WHERE replay_id = ? ORDER BY idx", (rid,))
+        return [dict(r) for r in rows]
 
     # clips
 

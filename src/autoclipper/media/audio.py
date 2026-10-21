@@ -26,3 +26,14 @@ def extract_audio(path: Path | str, stream_index: int | None, out_wav: Path | st
     ffmpeg("-i", str(path), "-map", f"0:{stream_index}", "-vn", "-ac", "1", "-ar", "16000",
            "-c:a", "pcm_s16le", "-f", "wav", str(out))  # fmt: skip
     return out
+
+
+def extract_audio_window(path: Path | str, start: float, length: float, out: Path | str) -> Path:
+    """Every audio stream of [start, start + length) as 16 kHz mono PCM in one Matroska file (stream order
+    kept), so a chunk of a long recording can be analysed like a short replay. Accurate input seek."""
+    out_p = prepare_output(path, out)
+    if not audio_tracks(path):
+        raise MediaError(f"no audio streams in {path}")
+    ffmpeg("-ss", f"{start:.3f}", "-t", f"{length:.3f}", "-i", str(path), "-map", "0:a", "-vn",
+           "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-f", "matroska", str(out_p))  # fmt: skip
+    return out_p

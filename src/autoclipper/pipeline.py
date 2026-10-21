@@ -153,7 +153,12 @@ def _run(ctx: Context, p: Path, rid: int, res: ReplayResult) -> None:
             lambda: find_candidates(timeline, max_n=opts.max_candidates, min_score=opts.min_score),
         )  # fmt: skip
         store.add_candidates(rid, [c.to_dict() for c in cands])
+    judge_and_render(ctx, p, rid, res, timeline)
 
+
+def judge_and_render(ctx: Context, p: Path, rid: int, res: ReplayResult, timeline: dict) -> None:
+    """Judge pending/queued candidates, render keeps, set the replay's final status (also used by ingest)."""
+    store = ctx.store
     _judge(ctx, p, rid, timeline)
     _render_keeps(ctx, p, rid)
 

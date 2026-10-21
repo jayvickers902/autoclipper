@@ -204,6 +204,59 @@ def make_four_tracks(out: Path, tmp: Path) -> None:
     })  # fmt: skip
 
 
+def make_long(
+    out: Path,
+    duration: float,
+    bursts: list[float],
+    chapters: list[tuple[float, str]] | None = None,
+    seed: int = 7,
+) -> Path:
+    """A long, small recording for ingest tests (not part of FIXTURES; tests build it in a tmp dir).
+
+    160x90 testsrc2 at 10 fps (libx264 ultrafast, 1 s keyframes), one 16 kHz AAC track: a quiet noise bed
+    plus a gunshot-like burst at each time in `bursts`; `chapters` [(t, title)] become MP4 chapters (as an
+    OBS chapter marker or a Segra bookmark would). numpy keeps a 10-minute track fast to synthesise.
+    """
+    import numpy as np
+
+    rate = 16_000
+    rng = np.random.default_rng(seed)
+    pcm = rng.uniform(-0.01, 0.01, int(duration * rate))
+    n = int(0.05 * rate)
+    env = np.exp(-5.0 * np.arange(n) / n)
+    for t in bursts:
+        a = int(t * rate)
+        seg = pcm[a : a + n]
+        seg += 0.9 * env[: seg.size] * rng.uniform(-1, 1, seg.size)
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        wav = tmp / "long.wav"
+        with wave.open(str(wav), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes((np.clip(pcm, -1, 1) * 32767).astype("<i2").tobytes())
+        meta_args: list[str] = []
+        if chapters:
+            meta = tmp / "chapters.txt"
+            lines = [";FFMETADATA1"]
+            marks = sorted(chapters) + [(duration, "")]
+            for (start, title), (end, _) in zip(marks, marks[1:], strict=False):
+                lines += ["[CHAPTER]", "TIMEBASE=1/1000", f"START={int(start * 1000)}",
+                          f"END={int(end * 1000)}", f"title={title}"]  # fmt: skip
+            meta.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            meta_args = ["-i", str(meta), "-map_chapters", "2"]
+        part = out.with_name(out.stem + ".part" + out.suffix)
+        run(
+            "ffmpeg", "-y", *lavfi(f"testsrc2=s=160x90:r=10:d={duration}"), "-i", str(wav), *meta_args,
+            "-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "35",
+            "-pix_fmt", "yuv420p", "-g", "10", "-keyint_min", "10", "-sc_threshold", "0",
+            "-c:a", "aac", "-b:a", "32k", "-t", str(duration), str(part),
+        )  # fmt: skip
+        part.replace(out)
+    return out
+
+
 FIXTURES = {
     "black": (make_black, ["black.mp4"]),
     "static": (make_static, ["static.mp4"]),
