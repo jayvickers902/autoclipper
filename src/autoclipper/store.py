@@ -164,6 +164,12 @@ def _row(r: sqlite3.Row | None) -> dict[str, Any] | None:
     return dict(r) if r is not None else None
 
 
+def _parse_candidate(r: dict[str, Any]) -> dict[str, Any]:
+    r["data"] = json.loads(r["data"])
+    r["verdict"] = json.loads(r["verdict"]) if r["verdict"] else None
+    return r
+
+
 class Store:
     def __init__(self, settings: Settings, path: Path | None = None):
         self.path = Path(path) if path else settings.data_dir / DB_NAME
@@ -282,10 +288,11 @@ class Store:
         if statuses is not None:
             wanted = set(statuses)
             rows = [r for r in rows if r["judge_status"] in wanted]
-        for r in rows:
-            r["data"] = json.loads(r["data"])
-            r["verdict"] = json.loads(r["verdict"]) if r["verdict"] else None
-        return rows
+        return [_parse_candidate(r) for r in rows]
+
+    def candidate(self, cid: int) -> dict[str, Any] | None:
+        row = self.con.execute("SELECT * FROM candidates WHERE id = ?", (cid,)).fetchone()
+        return _parse_candidate(dict(row)) if row else None
 
     def reset_failed_candidates(self, rid: int) -> None:
         with self.con:

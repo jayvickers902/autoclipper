@@ -10,10 +10,12 @@ import pytest
 
 from autoclipper.cli import main
 from autoclipper.config import Settings
+from autoclipper.discord import PostResult
 from autoclipper.review import make_server, parse_range, resolve_media
 from autoclipper.store import SCHEMA_V1, SCHEMA_VERSION, Store
 
 VIDEO = bytes(range(256)) * 8  # 2048 bytes
+FETCH = {"X-Requested-With": "fetch"}
 
 
 @pytest.fixture
@@ -57,12 +59,29 @@ def ids(settings: Settings) -> dict[str, int]:
     return {"replay": a, "dead": b, "keep": c1, "drop": c2, "pending": c3, "clip": clip}
 
 
+class FakePoster:
+    """Stands in for DiscordPoster: never touches the network."""
+
+    def __init__(self) -> None:
+        self.results: list[PostResult] = []
+        self.calls: list[tuple] = []
+
+    def post_clip(self, path, title, game, length_s, summary=""):
+        self.calls.append((Path(path).name, title, game, length_s, summary))
+        return self.results.pop(0) if self.results else PostResult("posted", message_id="1")
+
+
 @pytest.fixture
-def server(settings: Settings, ids: dict[str, int]) -> Iterator[int]:
+def fake_poster() -> FakePoster:
+    return FakePoster()
+
+
+@pytest.fixture
+def server(settings: Settings, ids: dict[str, int], fake_poster: FakePoster) -> Iterator[int]:
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))  # port 0: never the registered 4180
     sock.listen()
-    srv = make_server(settings, sock, quiet=True)
+    srv = make_server(settings, sock, quiet=True, poster_factory=lambda: fake_poster)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
     yield sock.getsockname()[1]
@@ -164,6 +183,51 @@ def test_label_rejects_bad_input(server: int, settings: Settings, ids: dict[str,
     assert resp.getheader("Location") == "/"
     with Store(settings) as st:
         assert st.con.execute("SELECT COUNT(*) FROM labels").fetchone()[0] == 1
+
+
+def test_post_button_posts_once(
+    server: int, settings: Settings, ids: dict[str, int], fake_poster: FakePoster
+):
+    _, html = get(server, f"/replay/{ids['replay']}")
+    assert html.count('class="post"') == 1  # only the kept candidate has a rendered clip
+    assert f'name="candidate_id" value="{ids["keep"]}"><input type="hidden" name="next"' in html
+
+    resp, body = request(server, "POST", "/post", f"candidate_id={ids['keep']}", **FETCH)
+    assert resp.status == 200 and b'"ok": true' in body
+    # verdict has no start/end, so the length falls back to the candidate window
+    assert fake_poster.calls == [("c_share.mp4", "Big <b>fight</b>", "other", 30.0, "won it")]
+    with Store(settings) as st:
+        clip = st.clip_for(ids["keep"])
+        assert clip["posted"] == 1 and clip["posted_at"]
+    _, html = get(server, f"/replay/{ids['replay']}")
+    assert 'class="post"' not in html and "posted to Discord" in html
+
+    resp, body = request(server, "POST", "/post", f"candidate_id={ids['keep']}", **FETCH)
+    assert resp.status == 409 and b"already posted" in body and len(fake_poster.calls) == 1
+
+
+def test_post_failure_leaves_clip_unposted(
+    server: int, settings: Settings, ids: dict[str, int], fake_poster: FakePoster
+):
+    fake_poster.results = [PostResult("refused", "clip cap reached"), PostResult("skipped", "no webhook")]
+    for _ in range(2):
+        resp, body = request(server, "POST", "/post", f"candidate_id={ids['keep']}", **FETCH)
+        assert resp.status == 502 and b'"ok": false' in body
+    with Store(settings) as st:
+        assert st.clip_for(ids["keep"])["posted"] == 0
+    # a plain form post redirects on success
+    resp, _ = request(server, "POST", "/post", f"candidate_id={ids['keep']}&next=/clips")
+    assert resp.status == 303 and resp.getheader("Location") == "/clips"
+
+
+def test_post_rejects_bad_input(server: int, ids: dict[str, int], fake_poster: FakePoster):
+    assert request(server, "POST", "/post", "candidate_id=x")[0].status == 400
+    assert request(server, "POST", "/post", "candidate_id=9999")[0].status == 404
+    assert request(server, "POST", "/post", f"candidate_id={ids['drop']}")[0].status == 409  # no clip
+    ok = f"candidate_id={ids['keep']}"
+    assert request(server, "POST", "/post", ok, Origin="http://evil.example")[0].status == 403
+    assert request(server, "POST", "/post", ok, Host="evil.example")[0].status == 403
+    assert fake_poster.calls == []
 
 
 def test_video_range(server: int):

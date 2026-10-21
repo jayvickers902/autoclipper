@@ -5,19 +5,23 @@
     GET  /clips           every rendered clip, newest first, with an inline video
     GET  /tolabel         judged candidates nobody has labelled yet (for the judge comparison)
     GET  /search?q=...    full-text search (titles, summaries, map, transcript) over judged candidates
-    POST /label           candidate_id + label (up|down) [+ next]; the only write, and only to `labels`
+    POST /label           candidate_id + label (up|down) [+ next]; writes only to `labels`
+    POST /post            candidate_id [+ next]; posts that rendered clip to the Discord webhook (once)
     GET  /media/<path>    files under output_dir only (Range supported), never replay_dir or anything else
 
 Bound to 127.0.0.1 by `config.bind_socket` (fails if the port is taken). Requests whose Host or Origin is not
-a loopback name are refused, so a web page or a DNS-rebinding host cannot reach it or post labels.
+a loopback name are refused, so a web page or a DNS-rebinding host cannot reach it, label or post.
 """
 
 from __future__ import annotations
 
 import html
+import json
 import re
 import socket
 import sys
+import threading
+import time
 from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,6 +30,8 @@ from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from .config import Settings, bind_socket
+from .discord import DiscordPoster, PostResult
+from .pipeline import _clamp
 from .search import highlight
 from .store import Store
 
@@ -114,6 +120,10 @@ form.srch{margin-left:auto;display:flex;gap:6px}form.srch input{background:#1b1e
 form.lab{display:inline-flex;gap:6px;margin:6px 0 0}
 form.lab button{font-size:18px;background:#23262d;border:1px solid #333843;border-radius:6px;padding:2px 12px;cursor:pointer;color:inherit}
 form.lab button.on{background:#2d4a7a;border-color:#7ab4ff}
+.acts{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:6px 0 0}.acts form.lab{margin:0}
+form.post{display:inline}
+form.post button{background:#3b3f9e;border:1px solid #5865f2;border-radius:6px;padding:4px 12px;cursor:pointer;color:#fff}
+form.post button:disabled{opacity:.6;cursor:wait}
 """  # noqa: E501
 
 JS = """
@@ -125,6 +135,22 @@ document.addEventListener('submit', async (e) => {
   const r = await fetch('/label', {method: 'POST', body, headers: {'X-Requested-With': 'fetch'}});
   if (!r.ok) { alert('label failed: ' + r.status); return; }
   f.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === e.submitter));
+});
+document.addEventListener('submit', async (e) => {
+  const f = e.target;
+  if (!f.classList.contains('post')) return;
+  e.preventDefault();
+  const b = f.querySelector('button');
+  b.disabled = true; b.textContent = 'Posting...';
+  let out = {ok: false, detail: 'no response'};
+  try {
+    const r = await fetch('/post', {method: 'POST', body: new URLSearchParams(new FormData(f)),
+                                    headers: {'X-Requested-With': 'fetch'}});
+    out = await r.json().catch(() => ({ok: false, detail: 'HTTP ' + r.status}));
+  } catch (err) { out.detail = String(err); }
+  if (out.ok) { f.outerHTML = '<span class="tag ok">posted to Discord</span>'; return; }
+  alert('Post failed: ' + out.detail);
+  b.disabled = false; b.textContent = 'Post to Discord';
 });
 """
 
@@ -172,6 +198,19 @@ def label_buttons(cid: int, current: str | None, nxt: str) -> str:
     )
 
 
+def post_button(cid: int, clip: dict[str, Any] | None, nxt: str) -> str:
+    """Post to Discord for a rendered clip, or a "posted" tag once it has been sent."""
+    if not clip or clip["status"] != "ok":
+        return ""
+    if clip["posted"]:
+        return tag("posted to Discord", "ok")
+    return (
+        '<form class="post" method="post" action="/post">'
+        f'<input type="hidden" name="candidate_id" value="{cid}">'
+        f'<input type="hidden" name="next" value="{esc(nxt)}"><button>Post to Discord</button></form>'
+    )
+
+
 def clip_media(output_dir: Path, clip: dict[str, Any] | None) -> str:
     if not clip or clip["status"] != "ok":
         return ""
@@ -213,7 +252,7 @@ def candidate_card(
         f'<div class="meta">{where}#{c["idx"] + 1} {fmt_time(c["start"])}-{fmt_time(c["end"])} '
         f"&middot; {tag(status, status)} {verdict} &middot; {' &middot; '.join(detail)}</div>"
         f"<div>{esc(v.get('summary', ''))}</div>{extra}{err}{clip_media(output_dir, clip)}"
-        f"{label_buttons(c['id'], label, nxt)}</div>"
+        f'<div class="acts">{label_buttons(c["id"], label, nxt)}{post_button(c["id"], clip, nxt)}</div></div>'
     )
 
 
@@ -352,6 +391,20 @@ def tolabel_page(store: Store, output_dir: Path) -> tuple[str, str]:
     return "To label", intro + ("".join(cards) or '<p class="dim">Nothing left to label.</p>')
 
 
+def post_clip_row(store: Store, poster: Any, clip: dict[str, Any]) -> PostResult:
+    """Post one rendered clip (clips row, candidate under `candidate`); mark it posted once it was sent."""
+    cand = clip["candidate"]
+    verdict = cand["verdict"] or {}
+    start, end, _ = _clamp(verdict, cand)
+    out = poster.post_clip(
+        clip["share_path"], str(verdict.get("title") or "clip"), str(verdict.get("game") or "other"),
+        end - start, str(verdict.get("summary") or ""),
+    )  # fmt: skip
+    if out.status == "posted":
+        store.save_clip(cand["id"], posted=1, posted_at=time.time())
+    return out
+
+
 def safe_next(nxt: str | None) -> str:
     """Only same-site absolute paths; anything else goes home."""
     if nxt and nxt.startswith("/") and not nxt.startswith("//") and "\\" not in nxt and "\n" not in nxt:
@@ -433,7 +486,8 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True  # error replies may leave the body unread
         if not self._host_ok():
             return self._error(HTTPStatus.FORBIDDEN, "unexpected Host or Origin")
-        if urlsplit(self.path).path != "/label":
+        path = urlsplit(self.path).path
+        if path not in ("/label", "/post"):
             return self._error(HTTPStatus.NOT_FOUND)
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -442,6 +496,8 @@ class Handler(BaseHTTPRequestHandler):
         if not 0 < length <= MAX_BODY:
             return self._error(HTTPStatus.BAD_REQUEST, "bad body")
         form = parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
+        if path == "/post":
+            return self._post(form)
         label = (form.get("label") or [""])[0]
         raw_id = (form.get("candidate_id") or [""])[0]
         if label not in ("up", "down") or not raw_id.isdigit():
@@ -454,6 +510,36 @@ class Handler(BaseHTTPRequestHandler):
                 store.label_candidate(cid, label)
         if self.headers.get("X-Requested-With") == "fetch":
             return self._send(HTTPStatus.OK, b'{"ok":true}', "application/json")
+        self._send(HTTPStatus.SEE_OTHER, b"", Location=safe_next((form.get("next") or [""])[0]))
+
+    def _post(self, form: dict[str, list[str]]) -> None:
+        raw_id = (form.get("candidate_id") or [""])[0]
+        if not raw_id.isdigit():
+            return self._post_reply(HTTPStatus.BAD_REQUEST, "need candidate_id", form)
+        cid = int(raw_id)
+        # One post at a time, so a double click cannot send the same clip twice.
+        with self.server.post_lock, Store(self.settings) as store:  # type: ignore[attr-defined]
+            cand = store.candidate(cid)
+            clip = store.clip_for(cid) if cand else None
+            if cand is None:
+                return self._post_reply(HTTPStatus.NOT_FOUND, "no such candidate", form)
+            if not clip or clip["status"] != "ok":
+                return self._post_reply(HTTPStatus.CONFLICT, "this candidate has no rendered clip", form)
+            if clip["posted"]:
+                return self._post_reply(HTTPStatus.CONFLICT, "already posted", form)
+            poster = self.server.poster_factory()  # type: ignore[attr-defined]
+            out = post_clip_row(store, poster, {**clip, "candidate": cand})
+        self.log_message("post candidate %d: %s", cid, out)
+        if out.status == "posted":
+            return self._post_reply(HTTPStatus.OK, "posted", form)
+        return self._post_reply(HTTPStatus.BAD_GATEWAY, str(out), form)
+
+    def _post_reply(self, status: HTTPStatus, detail: str, form: dict[str, list[str]]) -> None:
+        if self.headers.get("X-Requested-With") == "fetch":
+            body = json.dumps({"ok": status == HTTPStatus.OK, "detail": detail}).encode()
+            return self._send(status, body, "application/json")
+        if status != HTTPStatus.OK:
+            return self._error(status, detail)
         self._send(HTTPStatus.SEE_OTHER, b"", Location=safe_next((form.get("next") or [""])[0]))
 
     def _media(self, rel: str) -> None:
@@ -494,14 +580,19 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
 
 
-def make_server(settings: Settings, sock: socket.socket, *, quiet: bool = False) -> ThreadingHTTPServer:
-    """An HTTP server on an already-bound, listening socket."""
+def make_server(
+    settings: Settings, sock: socket.socket, *, quiet: bool = False,
+    poster_factory: Callable[[], Any] | None = None,
+) -> ThreadingHTTPServer:  # fmt: skip
+    """An HTTP server on an already-bound, listening socket. `poster_factory` makes the Discord poster."""
     server = ThreadingHTTPServer(sock.getsockname()[:2], Handler, bind_and_activate=False)
     server.socket.close()
     server.socket = sock
     server.daemon_threads = True
     server.settings = settings  # type: ignore[attr-defined]
     server.quiet = quiet  # type: ignore[attr-defined]
+    server.poster_factory = poster_factory or (lambda: DiscordPoster(settings))  # type: ignore[attr-defined]
+    server.post_lock = threading.Lock()  # type: ignore[attr-defined]
     return server
 
 

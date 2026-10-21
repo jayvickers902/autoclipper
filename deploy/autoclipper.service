@@ -16,7 +16,7 @@ Environment=PATH=/home/jay/.local/bin:/usr/local/bin:/usr/bin:/bin:/mnt/c/Window
 UnsetEnvironment=ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
 # AudioSet tags (P2.2b, CPU ONNX, ~2 s per track) feed the candidate curve.
 Environment=AUTOCLIPPER_TAGS=1
-ExecStart=/home/jay/.local/bin/uv run --extra gpu autoclipper run --post
+ExecStart=/home/jay/.local/bin/uv run --extra gpu autoclipper run
 # SIGTERM: the hub finishes the replay in progress, then exits; stages are resumable if it is killed instead.
 KillSignal=SIGTERM
 TimeoutStopSec=300

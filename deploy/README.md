@@ -1,8 +1,9 @@
 # Deploying the hub
 
 `autoclipper.service` runs `autoclipper run`: the review page (port 4180) and the replay watcher in one
-process. Add `--post` to `ExecStart` to post newly kept clips to the Discord test webhook (the persistent
-5-clip cap applies). Secrets live in `/home/jay/projects/autoclipper/.env`, never in the unit.
+process. Nothing is posted automatically: each rendered clip on the review page has a "Post to Discord" button
+(the persistent `AUTOCLIPPER_POST_MAX_CLIPS` cap applies). Adding `--post` to `ExecStart` would post every new
+kept clip instead. Secrets live in `/home/jay/projects/autoclipper/.env`, never in the unit.
 
 ## Install
 

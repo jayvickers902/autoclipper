@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 import threading
-import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -17,8 +16,8 @@ from . import media
 from .config import bind_socket
 from .discord import DiscordPoster
 from .ingest import IngestOptions, ingest_inbox
-from .pipeline import Context, ReplayResult, _clamp, process_pass
-from .review import make_server
+from .pipeline import Context, ReplayResult, process_pass
+from .review import make_server, post_clip_row
 from .scan import StabilityTracker
 
 
@@ -42,18 +41,11 @@ def post_new_clips(ctx: Context, results: list[ReplayResult], poster: Any) -> in
         if res.skipped or res.replay_id is None:
             continue
         for clip in ctx.store.unposted_clips(res.replay_id):
-            cand = clip["candidate"]
-            verdict = cand["verdict"] or {}
-            start, end, _ = _clamp(verdict, cand)
-            out = poster.post_clip(
-                clip["share_path"], str(verdict.get("title") or "clip"), str(verdict.get("game") or "other"),
-                end - start, str(verdict.get("summary") or ""),
-            )  # fmt: skip
-            ctx.log(f"  post {res.path.name} clip {cand['idx'] + 1}: {out}")
+            out = post_clip_row(ctx.store, poster, clip)
+            ctx.log(f"  post {res.path.name} clip {clip['candidate']['idx'] + 1}: {out}")
             if out.status in ("refused", "skipped"):
                 return posted
-            if out.ok:
-                ctx.store.save_clip(cand["id"], posted=1, posted_at=time.time())
+            if out.status == "posted":
                 posted += 1
     return posted
 
@@ -100,7 +92,7 @@ def run_hub(
     ctx.should_stop = stop.is_set
     sock = bind_socket(ctx.settings.host, ctx.settings.port)
     port = sock.getsockname()[1]
-    server = make_server(ctx.settings, sock)
+    server = make_server(ctx.settings, sock, poster_factory=lambda: make_poster(ctx))
     thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.2}, daemon=True)
     thread.start()
     host = ctx.settings.host
