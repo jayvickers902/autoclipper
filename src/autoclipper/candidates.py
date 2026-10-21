@@ -1,4 +1,4 @@
-"""Candidate clip windows from a signals timeline (`autoclipper.signals.analyze`, schema v1).
+"""Candidate clip windows from a signals timeline (`autoclipper.signals.analyze`, schema v1 or v2).
 
     find_candidates(timeline)  -> list[Candidate]   best windows first, at most AUTOCLIPPER_MAX_CANDIDATES
     interest_curve(timeline)   -> np.ndarray        fused per-hop interest, normalised per replay
@@ -32,7 +32,8 @@ WEIGHTS: dict[str, float] = {
     "keyword_weak": 0.4,  # other hype phrases ("nice", "let's go"): short box before it
     "speech": 0.5,  # voice-role rms well above that role's median
     "tag_high": 1.0,  # AudioSet gunshot / explosion (scaled by the tag score)
-    "tag_mid": 0.5,  # laughter / shout
+    "tag_mid": 0.5,  # laughter / shout: the funny / hype boost
+    "tag_music": 0.0,  # not additive: music damps the transient and loud components (see MUSIC_DAMP)
 }
 SIGMA = 1.0  # s, Gaussian smoothing of transient density
 LOUD_REF_DB = 20.0
@@ -43,6 +44,11 @@ KEYWORD_LOOKBACK = 10.0  # s of interest credited before a strong keyword
 WEAK_LOOKBACK = 3.0
 TAGS_HIGH = ("gunshot", "gunfire", "machine gun", "explosion")
 TAGS_MID = ("laughter", "shout", "yell", "scream")
+TAGS_MUSIC = ("music",)
+TAG_MIN = 0.1  # tag scores below this are noise floor
+TAG_REF = 0.5  # a tag score at this level counts fully (PANNs rarely exceeds ~0.5 on game audio)
+MUSIC_MIN = 0.3  # music scores below this do not damp
+MUSIC_DAMP = 0.6  # at most this share of the transient/loud interest is removed under pure music
 FLOOR = 1.5  # raw interest that counts as "a real fight"; curve = raw / max(raw.max(), FLOOR)
 
 FIGHT_GAP = 4.0
@@ -125,18 +131,28 @@ def _box(n: int, t0: float, t1: float) -> np.ndarray:
     return out
 
 
-def _tag_curve(timeline: dict, n: int) -> tuple[np.ndarray, np.ndarray]:
-    secs = max((len(v) for v in (timeline.get("seconds") or {}).values()), default=0)
-    high, mid = np.zeros(secs), np.zeros(secs)
-    for entries in (timeline.get("seconds") or {}).values():
+def _tag_curve(timeline: dict, n: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(high, mid, music) per hop, each 0..1. Music is read from the transient role only (a song on the
+    voice channel says nothing about the game audio); gunshot and laughter from any role."""
+    seconds = timeline.get("seconds") or {}
+    secs = max((len(v) for v in seconds.values()), default=0)
+    high, mid, music = np.zeros(secs), np.zeros(secs), np.zeros(secs)
+    t_role = _transient_role(timeline)
+    for role, entries in seconds.items():
         for s, e in enumerate(entries):
             for label, score in (e.get("tags") or {}).items():
                 low = label.lower()
                 if any(t in low for t in TAGS_HIGH):
-                    high[s] = max(high[s], score)
+                    high[s] = max(high[s], _tag_level(score))
                 elif any(t in low for t in TAGS_MID):
-                    mid[s] = max(mid[s], score)
-    return _per_second(list(high), n), _per_second(list(mid), n)
+                    mid[s] = max(mid[s], _tag_level(score))
+                elif role == t_role and any(t in low for t in TAGS_MUSIC) and score > MUSIC_MIN:
+                    music[s] = max(music[s], (score - MUSIC_MIN) / (1.0 - MUSIC_MIN))
+    return _per_second(list(high), n), _per_second(list(mid), n), _per_second(list(music), n)
+
+
+def _tag_level(score: float) -> float:
+    return 0.0 if score < TAG_MIN else min(1.0, score / TAG_REF)
 
 
 def _components(timeline: dict) -> dict[str, np.ndarray]:
@@ -164,13 +180,16 @@ def _components(timeline: dict) -> dict[str, np.ndarray]:
             rms = np.array([s["rms_db"] for s in entries], dtype=float)
             excite = np.clip((rms - np.median(rms) - SPEECH_MARGIN_DB) / SPEECH_REF_DB, 0, 1)
             comp["speech"] = np.maximum(comp["speech"], _per_second(list(excite), n))
-    comp["tag_high"], comp["tag_mid"] = _tag_curve(timeline, n)
+    comp["tag_high"], comp["tag_mid"], comp["tag_music"] = _tag_curve(timeline, n)
     return comp
 
 
 def _raw(timeline: dict) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     comp = _components(timeline)
-    return sum(WEIGHTS[k] * v for k, v in comp.items()), comp
+    # music makes transients (beats) look like fights; a gunshot tag in the same second cancels the damping
+    keep = 1.0 - MUSIC_DAMP * comp["tag_music"] * (1.0 - comp["tag_high"])
+    raw = sum(WEIGHTS[k] * v * (keep if k in ("transient", "loud") else 1.0) for k, v in comp.items())
+    return raw, comp
 
 
 def interest_curve(timeline: dict, hop: float = HOP) -> np.ndarray:
@@ -337,7 +356,7 @@ def find_candidates(
         a, b = int(w.start / HOP), max(int(w.start / HOP) + 1, int(math.ceil(w.end / HOP)))
         if comp["speech"][a:b].max(initial=0.0) >= 0.5:
             reasons.append("excited speech")
-        if max(comp["tag_high"][a:b].max(initial=0.0), comp["tag_mid"][a:b].max(initial=0.0)) >= 0.3:
+        if max(comp["tag_high"][a:b].max(initial=0.0), comp["tag_mid"][a:b].max(initial=0.0)) >= 0.5:
             reasons.append("audio tags")
         dens = comp["transient"][a:b]
         seg = dens if dens.size and dens.max() > 0 else curve[a:b]

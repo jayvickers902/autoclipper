@@ -1,9 +1,10 @@
-"""Per-second signal timeline for one replay (audio only; AudioSet tags and GPU whisper come later).
+"""Per-second signal timeline for one replay (audio only).
 
-`analyze(path, out_json=None)` returns (and optionally writes) this JSON-able dict, `version` 1:
+`analyze(path, out_json=None)` returns (and optionally writes) this JSON-able dict, `version` 2 (version 1
+lacked `whisper_device` and `tagger`; readers must treat both as optional, tags are `{}` without a tagger):
 
     {
-      "version": 1,
+      "version": 2,
       "source": "/path/to/replay.mp4",
       "duration": 59.2,                       # seconds, from ffprobe
       "dead": false,                          # true: black/frozen capture, no audio work was done
@@ -11,6 +12,8 @@
       "tracks": [{"order": 0, "index": 1, "role": "mix"}, ...],   # roles: mix/game/discord/mic or track_N
       "sources": {"transients": "game", "speech": ["discord", "mic"]},   # roles actually used
       "whisper_model": "large-v3-turbo",      # "" when speech was not run
+      "whisper_device": "cuda",               # "cuda" | "cpu" ("" when speech was not run)
+      "tagger": "panns-cnn14-16k",            # "" when no tagger ran
       "seconds": {                            # role -> one entry per whole second 0..ceil(duration)-1
         "game": [{"t": 0, "rms_db": -41.2, "peak_db": -12.0, "onsets": 0, "speech": false, "tags": {}}, ...]
       },
@@ -25,8 +28,10 @@
 dB values are dBFS (-90 = silence). `onsets` counts transients (10 ms resolution, 40 ms refractory) inside
 that second on that track; only the transient-source role also emits "transient" events, so voice tracks'
 onset counts include plosives and are not events. `speech` is true when a transcribed word overlaps the
-second (always false for tracks that are not transcribed). `tags` is the slot for AudioSet labels
-(`{label: score}`), filled by an optional `tagger(samples, sr, role) -> list[dict]` (one dict per second).
+second (always false for tracks that are not transcribed). `tags` holds AudioSet scores
+(`{tag: 0..1}`: gunshot, explosion, laughter, shout, speech, music; see `tagger.py`), filled by an optional
+`tagger(samples, sr, role) -> list[dict]` (one dict per second); `{}` when no tagger ran. Pass
+`tagger=PannsTagger()` to turn it on; the default is off.
 """
 
 from __future__ import annotations
@@ -42,7 +47,7 @@ import numpy as np
 from ..media import audio_tracks, extract_audio, is_dead_capture, probe
 from . import keywords, loudness, speech
 
-VERSION = 1
+VERSION = 2
 FOUR_TRACK_ROLES = ("mix", "game", "discord", "mic")  # OBS layout: tracks 1-4
 
 Tagger = Callable[[np.ndarray, int, str], list[dict]]
@@ -93,6 +98,8 @@ def analyze(
         ],
         "sources": {"transients": None, "speech": []},
         "whisper_model": "",
+        "whisper_device": "",
+        "tagger": getattr(tagger, "name", "custom") if tagger else "",
         "seconds": {},
         "events": [],
         "transcript": [],
@@ -145,6 +152,7 @@ def _fill(result, src, streams, roles, whisper, whisper_model, bias_keywords, ta
         for role in speech_roles:
             segments = speech.transcribe(audio[role], role, whisper_model, prompt)
             result["transcript"] += segments
+            result["whisper_device"] = speech.last_device
             for s, flag in enumerate(_speech_seconds(segments, n_seconds)):
                 result["seconds"][role][s]["speech"] = flag
             words = [w for seg in segments for w in seg["words"]]

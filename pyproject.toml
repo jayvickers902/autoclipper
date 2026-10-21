@@ -10,7 +10,12 @@ dependencies = [
     "faster-whisper>=1.2.1",
     "httpx>=0.28.1",
     "numpy>=2.5.4",
+    "onnxruntime>=1.20",  # PANNs AudioSet tagger (CPU); already pulled in by faster-whisper
 ]
+
+[project.optional-dependencies]
+# GPU whisper in WSL: cuBLAS 12 + cuDNN 9 for ctranslate2 (~1.3 GB). Without them whisper stays on the CPU.
+gpu = ["nvidia-cublas-cu12", "nvidia-cudnn-cu12"]
 
 [project.scripts]
 autoclipper = "autoclipper.cli:main"

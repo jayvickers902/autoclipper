@@ -22,6 +22,7 @@ from .gpu_gate import GpuGate
 from .judging import Judge, JudgeOutcome
 from .safety import assert_writable
 from .scan import StabilityTracker, candidate_files, file_sha256, settle
+from .signals.tagger import PannsTagger
 from .store import TERMINAL, Store
 
 STAGES = ("probe", "dead_check", "analyze", "candidates", "judge", "render")
@@ -31,6 +32,7 @@ WEBP_SECONDS = 3.0
 @dataclass(frozen=True)
 class Options:
     whisper: bool = True
+    tags: bool = False  # AudioSet tags (PANNs, CPU ONNX); opt-in: --tags / AUTOCLIPPER_TAGS=1
     max_candidates: int | None = None
     min_score: float = 0.6
     retry_failed: bool = True  # explicit `process` retries; watch/backfill only with --retry-failed
@@ -175,6 +177,16 @@ def _run(ctx: Context, p: Path, rid: int, res: ReplayResult) -> None:
     ctx.log(f"  {status}: {res.candidates} candidates, {res.keeps} keeps, {res.clips} clips {note}".rstrip())
 
 
+_TAGGER: PannsTagger | None = None
+
+
+def _tagger() -> PannsTagger:
+    """One shared tagger per process (the ONNX session is loaded on first use)."""
+    global _TAGGER
+    _TAGGER = _TAGGER or PannsTagger()
+    return _TAGGER
+
+
 def _timeline(ctx: Context, p: Path, rid: int, row: dict) -> dict:
     """Load the saved timeline, or build and save it (analyze stage)."""
     path = Path(row["timeline_path"]) if row["timeline_path"] else None
@@ -185,7 +197,8 @@ def _timeline(ctx: Context, p: Path, rid: int, row: dict) -> dict:
     )
 
     def build() -> dict:
-        tl = signals.analyze(p, whisper=ctx.options.whisper, check_dead=False)
+        tagger = _tagger() if ctx.options.tags else None
+        tl = signals.analyze(p, whisper=ctx.options.whisper, check_dead=False, tagger=tagger)
         dest.parent.mkdir(parents=True, exist_ok=True)
         tmp = dest.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(tl, indent=1) + "\n", encoding="utf-8")

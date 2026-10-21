@@ -150,7 +150,7 @@ def test_process_keeps_and_is_idempotent(ctx: Context, settings: Settings, fixtu
     assert set(stages) == {"probe", "dead_check", "analyze", "candidates", "judge", "render"}
     assert all(s["status"] == "ok" and s["seconds"] >= 0 for s in stages.values())
     timeline = Path(ctx.store.replay(res.replay_id)["timeline_path"])
-    assert timeline.is_relative_to(settings.data_dir) and json.loads(timeline.read_text())["version"] == 1
+    assert timeline.is_relative_to(settings.data_dir) and json.loads(timeline.read_text())["version"] == 2
 
     mtimes = {p: p.stat().st_mtime_ns for p in out.iterdir()}
     again = process_replay(ctx, src)
@@ -378,3 +378,21 @@ def test_real_replay_read_only(ctx: Context, settings: Settings) -> None:
     assert not any(p.is_relative_to(src_dir) for p in settings.data_dir.rglob("*"))
     if res.clips:
         assert all(p.is_relative_to(settings.output_dir) for p in settings.output_dir.rglob("*"))
+
+
+def test_tags_option_feeds_the_tagger_into_the_timeline(
+    ctx: Context, settings: Settings, fixtures_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from autoclipper import pipeline
+
+    class Stub:
+        name = "stub"
+
+        def __call__(self, samples, sr, role):
+            return [{"gunshot": 0.5}] * 20
+
+    monkeypatch.setattr(pipeline, "_tagger", lambda: Stub())
+    tagged = Context(ctx.settings, ctx.store, ctx.judge, Options(whisper=False, tags=True))
+    res = process_replay(tagged, put(settings, fixtures_dir, "firefight.mp4"))
+    tl = json.loads(Path(ctx.store.replay(res.replay_id)["timeline_path"]).read_text())
+    assert tl["tagger"] == "stub" and tl["seconds"]["mix"][3]["tags"] == {"gunshot": 0.5}

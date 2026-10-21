@@ -10,14 +10,14 @@ Task specs are in PLAN.md.
 - [x] P1 OBS stopgap
 - [x] P2.1 media primitives
 - [x] P2.2a signals: loudness, onsets, CPU whisper, keywords
-- [~] P2.2b signals: AudioSet tags, GPU whisper
+- [x] P2.2b signals: AudioSet tags, GPU whisper
 - [x] P2.3 candidate windows
 - [x] P2.4 judge (claude CLI) + usage guard
 - [x] P2.5 store + pipeline + CLI
 - [x] P2.6 review page
 - [x] P2.7 Discord poster
 - [x] P2.8 backfill + report
-- [ ] P2.9 judge comparison
+- [~] P2.9 judge comparison
 - [x] P2.10 hub service
 - [ ] P3.1 Segra clone + build
 - [ ] P3.2 TarkovIntegration
@@ -49,3 +49,4 @@ Record decisions, gotchas, and anything a restarted session must know here.
 - P2.5 API: pipeline.process_replay/process_pass/render_clip; judging.py has Judge Protocol + ClaudeJudge (lazy import of autoclipper.judge; adapt ClaudeJudge.__call__/paused/to_outcome when P2.4 API lands) + FakeJudge; CLI process/backfill/watch/report with `--judge fake`, `--no-whisper`; env AUTOCLIPPER_PIPELINE_JUDGE=fake. safety.assert_writable. Share encodes land ~18 MB (Discord free limit likely 10 MB -> 413 path re-encodes).
 - P2.4 API: autoclipper.judge.judge_candidate(replay_path, candidate, timeline, settings=None, *, candidate_id, guard, rejudge_borderline=False) -> JudgeResult(verdict, ledger_rows, cost_usd, tokens, attempts, queued); polish(..., mode="polish"|"rejudge"); `uv run python -m autoclipper.judge status|clear-pause|one <replay>`. Ledger data/judge-ledger.sqlite (1 Haiku call used in P2.4 smoke: 11.7K in/1.1K out, 7.3 s, 5h util 0.22). Borderline re-judge opt-in (Sonnet cap 40). Pipeline queues on pause (R1), so ollama fallback is effectively unused by the pipeline; fine for now.
 - P2.10: autoclipper.service installed+enabled (posting off: no --post). Review at http://autoclipper.localhost/ (200 via Caddy). GPU gate + claude CLI verified under systemd-run as jay. Restart it after code changes that affect run: sudo systemctl restart autoclipper.
+- P2.2b: tagger = PANNs CNN14 ONNX on CPU (opt-in --tags / AUTOCLIPPER_TAGS=1; service unit sets it), GPU whisper float16 via `uv sync --extra gpu` (gated by GpuGate, CPU int8 fallback). Timeline schema v2. Service unit edited (--extra gpu, TAGS=1) but NOT yet re-installed: after P2.9 lands, sudo cp deploy/autoclipper.service /etc/systemd/system/ && daemon-reload && restart.

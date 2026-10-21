@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -14,6 +15,12 @@ from autoclipper import __version__
 def _add_pipeline_flags(p: argparse.ArgumentParser) -> None:
     p.add_argument("--judge", default=None, help="'fake' keeps every candidate offline (default: Claude)")
     p.add_argument("--no-whisper", action="store_true", help="skip speech transcription (faster, weaker)")
+    p.add_argument(
+        "--tags",
+        action="store_true",
+        default=os.environ.get("AUTOCLIPPER_TAGS") == "1",
+        help="add AudioSet tags (gunshot, laughter, music) to the signals; or AUTOCLIPPER_TAGS=1",
+    )
     p.add_argument("--stable-wait", type=float, default=2.0, metavar="S", help="seconds between size checks")
 
 
@@ -70,7 +77,11 @@ def _context(args: argparse.Namespace, retry_failed: bool):
         settings=settings,
         store=Store(settings),
         judge=resolve_judge(settings, args.judge),
-        options=Options(whisper=not getattr(args, "no_whisper", False), retry_failed=retry_failed),
+        options=Options(
+            whisper=not getattr(args, "no_whisper", False),
+            tags=getattr(args, "tags", False),
+            retry_failed=retry_failed,
+        ),
         log=lambda msg: print(msg, flush=True),
     )
 

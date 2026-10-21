@@ -48,6 +48,8 @@ def timeline(
         "events": sorted(events, key=lambda e: e["t"]), "transcript": [],
     }  # fmt: skip
 
+FIGHT_AT_20 = [20.0, 20.4, 21.1, 21.3]
+
 
 def assert_valid(cands: list[Candidate], tl: dict) -> None:
     ts = [e["t"] for e in tl["events"] if e["kind"] == "transient"]
@@ -200,3 +202,58 @@ def test_firefight_fixture_integration(fixtures_dir: Path) -> None:
     cands = find_candidates(tl)
     assert cands and any(c.start <= 6.0 and c.end >= 12.2 for c in cands)
     assert_valid(cands, tl)
+
+
+def _tags_at(secs: range, tag: dict[str, float]) -> dict[int, dict[str, float]]:
+    return {s: dict(tag) for s in secs}
+
+
+def test_tag_weighting_orders_gunshot_over_laughter_over_nothing() -> None:
+    n = 40
+    gun = interest_curve(timeline(float(n), tags={20: {"gunshot": 0.5}}))
+    fun = interest_curve(timeline(float(n), tags={20: {"laughter": 0.5}}))
+    shout = interest_curve(timeline(float(n), tags={20: {"shout": 0.5}}))
+    assert gun[40] > fun[40] > 0 and shout[40] == pytest.approx(fun[40])
+    assert gun[40] / fun[40] == pytest.approx(2.0)  # tag_high 1.0 vs tag_mid 0.5
+    weak = interest_curve(timeline(float(n), tags={20: {"gunshot": 0.05}}))  # under the noise floor
+    assert weak.max() == 0.0
+    # score scales the boost until TAG_REF, then saturates
+    half = interest_curve(timeline(float(n), tags={20: {"explosion": 0.25}}))[40]
+    assert half == pytest.approx(gun[40] / 2) and interest_curve(
+        timeline(float(n), tags={20: {"explosion": 0.9}})
+    )[40] == pytest.approx(gun[40])
+
+
+def test_tags_lift_a_candidate_score() -> None:
+    plain = find_candidates(timeline(60.0, FIGHT_AT_20))
+    tags = _tags_at(range(20, 24), {"gunshot": 0.6, "laughter": 0.6})
+    tagged = find_candidates(timeline(60.0, FIGHT_AT_20, tags=tags))
+    assert plain and tagged and tagged[0].score > plain[0].score
+    assert "audio tags" in tagged[0].reasons and "audio tags" not in plain[0].reasons
+
+
+def test_music_damps_false_fights() -> None:
+    quiet = timeline(60.0, FIGHT_AT_20)
+    music = timeline(60.0, FIGHT_AT_20, tags=_tags_at(range(15, 30), {"music": 0.9, "speech": 0.4}))
+    q, m = interest_curve(quiet), interest_curve(music)
+    assert m[41] < q[41] * 0.7 and m[41] > 0  # damped, not erased
+    assert find_candidates(music)[0].score < find_candidates(quiet)[0].score
+    # below the threshold music does nothing; a gunshot tag in the same second cancels the damping
+    low = timeline(60.0, FIGHT_AT_20, tags=_tags_at(range(60), {"music": 0.3}))
+    assert np.array_equal(interest_curve(low), q)
+    both = timeline(60.0, FIGHT_AT_20, tags=_tags_at(range(15, 30), {"music": 0.9, "gunshot": 0.6}))
+    assert interest_curve(both)[41] >= q[41]
+
+
+def test_music_on_a_voice_role_is_ignored() -> None:
+    tl = timeline(60.0, FIGHT_AT_20, voice=[-30.0] * 60)
+    for e in tl["seconds"]["mic"]:
+        e["tags"] = {"music": 0.95}
+    assert np.array_equal(interest_curve(tl), interest_curve(timeline(60.0, FIGHT_AT_20, voice=[-30.0] * 60)))
+
+
+def test_v1_and_v2_timelines_both_work() -> None:
+    v2 = timeline(60.0, FIGHT_AT_20)
+    v2.update(version=2, whisper_device="cuda", tagger="panns-cnn14-16k")
+    v1 = {k: v for k, v in v2.items() if k not in ("whisper_device", "tagger")} | {"version": 1}
+    assert [c.to_dict() for c in find_candidates(v1)] == [c.to_dict() for c in find_candidates(v2)]
