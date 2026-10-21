@@ -24,10 +24,10 @@ Task specs are in PLAN.md.
 - [x] P3.3 recorder defaults
 - [x] P3.4 hub uploader
 - [x] P4.1 long-recording ingestion
-- [~] P4.2 retention
-- [ ] P5.1 multi-POV alignment
-- [ ] P5.2 search
-- [ ] P5.3 bot integration doc
+- [x] P4.2 retention
+- [x] P5.1 multi-POV alignment
+- [~] P5.2 search
+- [~] P5.3 bot integration doc
 - [ ] R2 final review + report
 
 ## Notes for the next session
@@ -55,3 +55,5 @@ Record decisions, gotchas, and anything a restarted session must know here.
 - P3.3: defaults only seed fresh installs; Jay's existing Segra install would keep saved codec/audio (NEEDS-JAY when he installs). Track layout: 1 mix, then one per mic, then Game, then shared Voice Chat (Discord) -> with one mic: 2 mic, 3 game, 4 voice (differs from OBS stopgap order 2 game/3 Discord/4 mic). Frontend needs rebuild before publish.
 - P4.1: autoclipper.ingest / eft / hints; CLI `ingest <file-or-dir> --eft-logs`; store schema v3 (replays.kind, started_at, segments). Not yet in the run/watch loop. Two real_media timing tests (test_media black replays <10 s, test_signals tagger <10 s) fail only under CPU load while a game runs.
 - P3.4: hub receiver autoclipper.uploads (off unless AUTOCLIPPER_UPLOAD_PORT set; `uv run python -m autoclipper.uploads`), inbox data/inbox/<user>/<sha>/ (skip .staging/). Recorder HubUploadClient (settings hubUploadUrl/hubUploadToken). Enabling = NEEDS-JAY (ports claim autoclipper-upload, tokens, firewall).
+- P5.1: autoclipper.align.align(rec_a, rec_b, a_mic_track, b_voice_track, ...) offset = t_b - t_a; no CLI yet (add `autoclipper align A B --a-layout obs|segra` when cli.py is free). Untested on real two-PC recordings; no clock-drift handling.
+- P4.2: `autoclipper retention [--json]` report-only (no delete code); manages rendered clips, inbox uploads, Segra-tagged files in AUTOCLIPPER_RECORDER_DIR. Hub loop (hub.replay_pass) now also ingests finished inbox uploads; `autoclipper upload-serve`. Service restarted after P4.2 (store v3 migrated).
