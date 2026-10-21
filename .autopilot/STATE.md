@@ -12,9 +12,9 @@ Task specs are in PLAN.md.
 - [x] P2.2a signals: loudness, onsets, CPU whisper, keywords
 - [ ] P2.2b signals: AudioSet tags, GPU whisper
 - [x] P2.3 candidate windows
-- [~] P2.4 judge (claude CLI) + usage guard
+- [x] P2.4 judge (claude CLI) + usage guard
 - [x] P2.5 store + pipeline + CLI
-- [ ] P2.6 review page
+- [~] P2.6 review page
 - [x] P2.7 Discord poster
 - [ ] P2.8 backfill + report
 - [ ] P2.9 judge comparison
@@ -47,3 +47,4 @@ Record decisions, gotchas, and anything a restarted session must know here.
 - q is paused all session: q's auto-detect treats EpicOnlineServicesUserHelper.exe (Epic Games folder) as a game. Don't rely on q; the hub's GPU gate (P2.10) must not copy that false positive (launcher/EOS helpers aren't games).
 - tests/test_signals.py::test_speech_keywords flaked once under parallel load (passes alone).
 - P2.5 API: pipeline.process_replay/process_pass/render_clip; judging.py has Judge Protocol + ClaudeJudge (lazy import of autoclipper.judge; adapt ClaudeJudge.__call__/paused/to_outcome when P2.4 API lands) + FakeJudge; CLI process/backfill/watch/report with `--judge fake`, `--no-whisper`; env AUTOCLIPPER_PIPELINE_JUDGE=fake. safety.assert_writable. Share encodes land ~18 MB (Discord free limit likely 10 MB -> 413 path re-encodes).
+- P2.4 API: autoclipper.judge.judge_candidate(replay_path, candidate, timeline, settings=None, *, candidate_id, guard, rejudge_borderline=False) -> JudgeResult(verdict, ledger_rows, cost_usd, tokens, attempts, queued); polish(..., mode="polish"|"rejudge"); `uv run python -m autoclipper.judge status|clear-pause|one <replay>`. Ledger data/judge-ledger.sqlite (1 Haiku call used in P2.4 smoke: 11.7K in/1.1K out, 7.3 s, 5h util 0.22). Borderline re-judge opt-in (Sonnet cap 40). Pipeline queues on pause (R1), so ollama fallback is effectively unused by the pipeline; fine for now.
