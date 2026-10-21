@@ -43,3 +43,4 @@ The hub's judge caps (300 Haiku / 40 Sonnet) were sized for the autopilot run an
 
 ## Open from the final review
 The Sonnet "polish" step (better titles for posted clips) is built but never called by the pipeline or poster. Wire it into the poster when you turn posting on, if you want it. Full review outcome: `docs/AUTOPILOT-REPORT.md`.
+Minor, pre-existing: on `systemctl stop/restart autoclipper` the old process can print a `KeyboardInterrupt` traceback during `server.shutdown()` (systemd and uv each send SIGTERM; `on_signal` in `src/autoclipper/cli.py` raises on the second). Harmless: the restart is clean. The fix is to ignore repeat signals once shutdown has started.
