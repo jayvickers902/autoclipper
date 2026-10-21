@@ -15,7 +15,7 @@ Task specs are in PLAN.md.
 - [~] P2.4 judge (claude CLI) + usage guard
 - [ ] P2.5 store + pipeline + CLI
 - [ ] P2.6 review page
-- [ ] P2.7 Discord poster
+- [x] P2.7 Discord poster
 - [ ] P2.8 backfill + report
 - [ ] P2.9 judge comparison
 - [ ] P2.10 hub service

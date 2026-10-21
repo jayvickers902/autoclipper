@@ -40,8 +40,24 @@ class Settings:
     judge_max_calls_per_hour: int = 60
     polish_max_calls_per_day: int = 30
     judge_max_5h: float = 0.9
+    judge_max_7d: float = 0.6
+    # Run caps on Claude calls, counted over every ledger row ever (failed and timed-out calls included).
+    run_max_haiku: int = 300
+    run_max_sonnet: int = 40
+    judge_timeout_s: float = 120.0
+    claude_bin: str = "claude"
+    # Not derived from data_dir: the run caps count every row ever, so moving data_dir must not reset them.
+    # AUTOCLIPPER_LEDGER exists for tests (Guard refuses the default path under pytest).
+    ledger_path: Path = PROJECT_ROOT / "data" / "judge-ledger.sqlite"
+    needs_jay_path: Path = PROJECT_ROOT / ".autopilot" / "NEEDS-JAY.md"
     ollama_url: str = "http://127.0.0.1:11434"
+    ollama_vision: bool = False  # True: qwen3.8-27b on frames (slow, spills VRAM); False: qwen3:8b on text
+    ollama_vision_model: str = "qwen3.8-27b"
+    ollama_text_model: str = "qwen3:8b"
     discord_test_webhook_url: str = ""
+    # Code-enforced Discord caps: clips counted persistently (all processes), texts per run.
+    post_max_clips: int = 5
+    post_max_texts: int = 20
 
     @classmethod
     def from_env(cls, dotenv: bool = True) -> Settings:
@@ -65,8 +81,21 @@ class Settings:
                 e("AUTOCLIPPER_POLISH_MAX_CALLS_PER_DAY", d.polish_max_calls_per_day)
             ),
             judge_max_5h=float(e("AUTOCLIPPER_JUDGE_MAX_5H", d.judge_max_5h)),
+            judge_max_7d=float(e("AUTOCLIPPER_JUDGE_MAX_7D", d.judge_max_7d)),
+            run_max_haiku=int(e("AUTOCLIPPER_RUN_MAX_HAIKU", d.run_max_haiku)),
+            run_max_sonnet=int(e("AUTOCLIPPER_RUN_MAX_SONNET", d.run_max_sonnet)),
+            judge_timeout_s=float(e("AUTOCLIPPER_JUDGE_TIMEOUT", d.judge_timeout_s)),
+            claude_bin=e("AUTOCLIPPER_CLAUDE_BIN", d.claude_bin),
+            ledger_path=Path(e("AUTOCLIPPER_LEDGER", str(d.ledger_path))),
+            needs_jay_path=Path(e("AUTOCLIPPER_NEEDS_JAY", str(d.needs_jay_path))),
             ollama_url=e("AUTOCLIPPER_OLLAMA_URL", d.ollama_url),
+            ollama_vision=e("AUTOCLIPPER_OLLAMA_VISION", "1" if d.ollama_vision else "0").lower()
+            in ("1", "true", "yes", "on"),
+            ollama_vision_model=e("AUTOCLIPPER_OLLAMA_VISION_MODEL", d.ollama_vision_model),
+            ollama_text_model=e("AUTOCLIPPER_OLLAMA_TEXT_MODEL", d.ollama_text_model),
             discord_test_webhook_url=e("DISCORD_TEST_WEBHOOK_URL", d.discord_test_webhook_url),
+            post_max_clips=int(e("AUTOCLIPPER_POST_MAX_CLIPS", d.post_max_clips)),
+            post_max_texts=int(e("AUTOCLIPPER_POST_MAX_TEXTS", d.post_max_texts)),
         )
 
 

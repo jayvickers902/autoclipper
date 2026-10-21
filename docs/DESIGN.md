@@ -176,3 +176,10 @@ claude.ai on the `pro` plan with extra usage off:
   video can't go through tunnels.
 - **Steam background recordings as a zero-install fallback recorder.** They are MPEG-DASH (`session.mpd`
   plus `.m4s` segments), and ffmpeg reads them directly.
+
+## Discord upload limit (unobserved)
+
+The real webhook attachment limit is **unobserved so far**: no test webhook is configured
+(`DISCORD_TEST_WEBHOOK_URL` is unset), so `autoclipper.discord` has never posted for real. It sends clips
+of ≤ 19 MB and, on an HTTP 413, re-encodes to ≤ 9.5 MB with `share_encode` and retries once. When a
+webhook exists, the backfill should record the largest accepted size here and adjust `UPLOAD_MAX_MB`.
