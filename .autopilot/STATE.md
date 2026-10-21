@@ -11,7 +11,7 @@ Task specs are in PLAN.md.
 - [x] P2.1 media primitives
 - [x] P2.2a signals: loudness, onsets, CPU whisper, keywords
 - [ ] P2.2b signals: AudioSet tags, GPU whisper
-- [~] P2.3 candidate windows
+- [x] P2.3 candidate windows
 - [~] P2.4 judge (claude CLI) + usage guard
 - [ ] P2.5 store + pipeline + CLI
 - [ ] P2.6 review page
@@ -43,3 +43,6 @@ Record decisions, gotchas, and anything a restarted session must know here.
 - P2.1 API: autoclipper.media {probe, keyframe_times, detect_black, detect_frozen, is_dead_capture, extract_audio(path, stream_index|None, out), audio_tracks, cut_copy, share_encode->EncodeResult, nvenc_works, thumbnail, preview_webp}; MediaError. Real replays have keyframes ~every 4 s.
 - P1: OBS websocket on 4455 (password in obs-websocket config.json, never print). Test replay in Videos/autoclipper/obs-test/. In-game hook check is NEEDS-JAY.
 - P2.2a API: autoclipper.signals.analyze(path, out_json=None, *, whisper=True, whisper_model=None, bias_keywords=False, check_dead=True, tagger=None); schema v1 in signals/analyze.py docstring; seconds keyed by role. large-v3-turbo CPU int8 ~30 s per 59 s replay. Commit only your task's files while another agent is mid-task (git add <paths>).
+- P2.3 API: autoclipper.candidates.find_candidates(timeline, max_n=None, min_score=0.6) -> [Candidate] (to_dict); env AUTOCLIPPER_MAX_CANDIDATES (default 4). Real replays give 2 windows each, many hitting the 45 s cap. Thresholds are untuned guesses.
+- q is paused all session: q's auto-detect treats EpicOnlineServicesUserHelper.exe (Epic Games folder) as a game. Don't rely on q; the hub's GPU gate (P2.10) must not copy that false positive (launcher/EOS helpers aren't games).
+- tests/test_signals.py::test_speech_keywords flaked once under parallel load (passes alone).

@@ -25,3 +25,7 @@ OBS 32.2.2 ignores `--disable-shutdown-check`. After an unclean exit (forced clo
 ## obs-websocket listens on all interfaces (port 4455)
 OBS 32 has no localhost-only option, so it's reachable over LAN/Tailscale (auth is still on). To restrict it, run in an admin PowerShell:
 `New-NetFirewallRule -DisplayName "OBS websocket local only" -Direction Inbound -LocalPort 4455 -Protocol TCP -RemoteAddress Any -Action Block -Profile Any` (localhost traffic doesn't pass the firewall, so the hub keeps working).
+
+## q thinks the Epic launcher is a game
+`q` stood down all run because `EpicOnlineServicesUserHelper.exe` (under `Epic Games\`) matches its auto-detect. If the Epic launcher stays running, add these to `C:\Users\jayvi\bin\q-games.txt`:
+`!EpicOnlineServicesUserHelper.exe`, `!EOSOverlayRenderer-Win64-Shipping.exe`, `!EpicGamesLauncher.exe`, `!EpicWebHelper.exe`
