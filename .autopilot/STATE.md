@@ -17,14 +17,14 @@ Task specs are in PLAN.md.
 - [x] P2.6 review page
 - [x] P2.7 Discord poster
 - [x] P2.8 backfill + report
-- [~] P2.9 judge comparison
+- [x] P2.9 judge comparison
 - [x] P2.10 hub service
 - [x] P3.1 Segra clone + build
 - [x] P3.2 TarkovIntegration
-- [~] P3.3 recorder defaults
-- [ ] P3.4 hub uploader
-- [ ] P4.1 long-recording ingestion
-- [ ] P4.2 retention
+- [x] P3.3 recorder defaults
+- [x] P3.4 hub uploader
+- [x] P4.1 long-recording ingestion
+- [~] P4.2 retention
 - [ ] P5.1 multi-POV alignment
 - [ ] P5.2 search
 - [ ] P5.3 bot integration doc
@@ -51,3 +51,7 @@ Record decisions, gotchas, and anything a restarted session must know here.
 - P2.10: autoclipper.service installed+enabled (posting off: no --post). Review at http://autoclipper.localhost/ (200 via Caddy). GPU gate + claude CLI verified under systemd-run as jay. Restart it after code changes that affect run: sudo systemctl restart autoclipper.
 - P2.2b: tagger = PANNs CNN14 ONNX on CPU (opt-in --tags / AUTOCLIPPER_TAGS=1; service unit sets it), GPU whisper float16 via `uv sync --extra gpu` (gated by GpuGate, CPU int8 fallback). Timeline schema v2. Service unit edited (--extra gpu, TAGS=1) but NOT yet re-installed: after P2.9 lands, sudo cp deploy/autoclipper.service /etc/systemd/system/ && daemon-reload && restart.
 - P3.1: recorder repo C:\projects\autoclipper-recorder, branch autoclipper off v1.9.4 (4bbfc60), upstream push DISABLED. Per-user .NET SDK 10.0.402 at %LOCALAPPDATA%\Microsoft\dotnet (put first on PATH). Node 24.14.1 present. Build steps in RECORDER.md; revert packages.lock.json after restore. Output publish/ (gitignored).
+- P2.9: keep = score >= AUTOCLIPPER_KEEP_MIN_SCORE (7) via judging.apply_keep_threshold; rejudge off. Ollama part of the comparison NOT run (Wardogs running all session): when no game runs, `uv run python -m autoclipper.judge.compare run --ollama --ollama-vision 5` then `report`, and add the row to docs/JUDGE-COMPARISON.md. Sonnet used 28/40 (12 left for the run), Haiku 57/300. Service unit re-installed 08:50 (GPU extra + tags).
+- P3.3: defaults only seed fresh installs; Jay's existing Segra install would keep saved codec/audio (NEEDS-JAY when he installs). Track layout: 1 mix, then one per mic, then Game, then shared Voice Chat (Discord) -> with one mic: 2 mic, 3 game, 4 voice (differs from OBS stopgap order 2 game/3 Discord/4 mic). Frontend needs rebuild before publish.
+- P4.1: autoclipper.ingest / eft / hints; CLI `ingest <file-or-dir> --eft-logs`; store schema v3 (replays.kind, started_at, segments). Not yet in the run/watch loop. Two real_media timing tests (test_media black replays <10 s, test_signals tagger <10 s) fail only under CPU load while a game runs.
+- P3.4: hub receiver autoclipper.uploads (off unless AUTOCLIPPER_UPLOAD_PORT set; `uv run python -m autoclipper.uploads`), inbox data/inbox/<user>/<sha>/ (skip .staging/). Recorder HubUploadClient (settings hubUploadUrl/hubUploadToken). Enabling = NEEDS-JAY (ports claim autoclipper-upload, tokens, firewall).

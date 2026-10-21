@@ -29,3 +29,9 @@ OBS 32 has no localhost-only option, so it's reachable over LAN/Tailscale (auth 
 ## q thinks the Epic launcher is a game
 `q` stood down all run because `EpicOnlineServicesUserHelper.exe` (under `Epic Games\`) matches its auto-detect. If the Epic launcher stays running, add these to `C:\Users\jayvi\bin\q-games.txt`:
 `!EpicOnlineServicesUserHelper.exe`, `!EOSOverlayRenderer-Win64-Shipping.exe`, `!EpicGamesLauncher.exe`, `!EpicWebHelper.exe`
+
+## Recorder (Segra fork): install and test in-game (P3.2-P3.4)
+Built from `C:\projects\autoclipper-recorder` (branch `autoclipper`); build steps in its RECORDER.md (rebuild the frontend first so the new defaults show).
+1. Install/run the published Segra.exe. If you already used Segra, your saved settings win over the new defaults: in Settings pick the AV1 NVENC encoder, turn on separate audio tracks and set voice chat to Game + Discord.
+2. Play a Tarkov raid: check the raid gets start/map/end bookmarks, and the recording has tracks 1 mix, 2 mic, 3 game, 4 voice chat.
+3. To upload to the hub (off now): `cd ~/projects/autoclipper && ports claim autoclipper-upload`, then in `.env` set `AUTOCLIPPER_UPLOAD_PORT` to that port, the bind address (your Tailscale/LAN IP) and the upload token(s) (see docs/UPLOADER.md), run `uv run python -m autoclipper.uploads`, allow the port in Windows Firewall for your Tailscale range only, and put the hub URL + token into Segra's settings.json (`hubUploadUrl`, `hubUploadToken`).
