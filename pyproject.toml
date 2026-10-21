@@ -30,3 +30,4 @@ select = ["E", "F", "W", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["real_media: needs real replay files under /mnt/c/Users/jayvi/Videos (skipped when absent)"]
