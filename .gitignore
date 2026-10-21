@@ -1,0 +1,15 @@
+.env
+data/
+.venv/
+__pycache__/
+*.pyc
+.ruff_cache/
+.pytest_cache/
+tests/fixtures/generated/
+.autopilot/logs/
+.autopilot/supervisor.log
+.autopilot/STATUS
+.autopilot/HEARTBEAT
+.autopilot/.lock
+*.mp4
+*.mkv

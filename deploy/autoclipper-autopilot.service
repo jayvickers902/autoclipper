@@ -1,0 +1,18 @@
+# Started by hand: sudo systemctl start autoclipper-autopilot
+# No [Install] section on purpose, so it never starts at boot.
+[Unit]
+Description=autoclipper autopilot (headless Claude Code on Jay's subscription)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=jay
+WorkingDirectory=/home/jay/projects/autoclipper
+Environment=HOME=/home/jay
+Environment=PATH=/home/jay/.local/bin:/usr/local/bin:/usr/bin:/bin
+# Optional overrides, e.g. AUTOPILOT_MODEL=sonnet or AUTOPILOT_WEEKLY_MAX=0.6
+EnvironmentFile=-/home/jay/projects/autoclipper/.autopilot/autopilot.env
+UnsetEnvironment=ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
+ExecStart=/home/jay/projects/autoclipper/.autopilot/autopilot.sh
+TimeoutStopSec=40

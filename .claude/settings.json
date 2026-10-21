@@ -1,0 +1,44 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ffmpeg *)",
+      "Bash(ffprobe *)",
+      "Bash(uv *)",
+      "Bash(uvx *)",
+      "Bash(wgit status *)",
+      "Bash(wgit diff *)",
+      "Bash(wgit log *)",
+      "Bash(wgit add *)",
+      "Bash(wgit commit *)",
+      "Bash(ports *)",
+      "Bash(q *)",
+      "Bash(git init *)",
+      "Bash(sqlite3 *)",
+      "Bash(jq *)"
+    ],
+    "deny": [
+      "Bash(git push)",
+      "Bash(git push *)",
+      "Bash(wgit push)",
+      "Bash(wgit push *)",
+      "Bash(wgit clean *)",
+      "Bash(wgit reset --hard *)",
+      "Bash(gh repo fork *)",
+      "Bash(gh repo create *)",
+      "Bash(vercel *)",
+      "Bash(wrangler *)",
+      "Bash(cloudflared *)",
+      "Bash(systemctl * autoclipper-autopilot*)",
+      "Bash(sudo systemctl * autoclipper-autopilot*)",
+      "Edit(//home/jay/projects/autoclipper/.autopilot/autopilot.sh)",
+      "Edit(//home/jay/projects/autoclipper/.autopilot/SESSION_PROMPT.md)",
+      "Edit(//home/jay/projects/cs-analytics/**)",
+      "Edit(//home/jay/projects/clip-trimmer/**)",
+      "Edit(//home/jay/projects/tarkov-squad-planner/**)",
+      "Edit(//mnt/c/projects/tarkov-squad-planner-companion/**)",
+      "Edit(//mnt/c/projects/frag-movie*/**)",
+      "Artifact",
+      "mcp__plugin_cloudflare_cloudflare__execute"
+    ]
+  }
+}

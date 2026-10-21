@@ -1,0 +1,32 @@
+[project]
+name = "autoclipper"
+version = "0.1.0"
+description = "Turns gameplay replays into judged, trimmed, shareable clips"
+authors = [
+    { name = "Jay Vickers", email = "jayvickers@gmail.com" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[project.scripts]
+autoclipper = "autoclipper.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
