@@ -41,6 +41,9 @@ class Settings:
     polish_max_calls_per_day: int = 30
     judge_max_5h: float = 0.9
     judge_max_7d: float = 0.6
+    # Keep a Claude verdict when its score reaches this (P2.9: score >= 7 matched Sonnet on 0.88 of a sample,
+    # Haiku's own keep flag on 0.71). 0 = trust the model's keep flag.
+    keep_min_score: int = 7
     # Run caps on Claude calls, counted over every ledger row ever (failed and timed-out calls included).
     run_max_haiku: int = 300
     run_max_sonnet: int = 40
@@ -82,6 +85,7 @@ class Settings:
             ),
             judge_max_5h=float(e("AUTOCLIPPER_JUDGE_MAX_5H", d.judge_max_5h)),
             judge_max_7d=float(e("AUTOCLIPPER_JUDGE_MAX_7D", d.judge_max_7d)),
+            keep_min_score=int(e("AUTOCLIPPER_KEEP_MIN_SCORE", d.keep_min_score)),
             run_max_haiku=int(e("AUTOCLIPPER_RUN_MAX_HAIKU", d.run_max_haiku)),
             run_max_sonnet=int(e("AUTOCLIPPER_RUN_MAX_SONNET", d.run_max_sonnet)),
             judge_timeout_s=float(e("AUTOCLIPPER_JUDGE_TIMEOUT", d.judge_timeout_s)),

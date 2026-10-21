@@ -7,6 +7,7 @@ fix `ClaudeJudge.__call__` / `ClaudeJudge.paused` / `to_outcome` here and nothin
 
 from __future__ import annotations
 
+import dataclasses
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,7 +78,17 @@ class ClaudeJudge:
     def __call__(self, replay: Path, candidate: Candidate, timeline: dict) -> JudgeOutcome:
         import autoclipper.judge as judge_pkg
 
-        return to_outcome(judge_pkg.judge_candidate(replay, candidate, timeline, self.settings))
+        out = to_outcome(judge_pkg.judge_candidate(replay, candidate, timeline, self.settings))
+        return apply_keep_threshold(out, self.settings.keep_min_score)
+
+
+def apply_keep_threshold(out: JudgeOutcome, min_score: int) -> JudgeOutcome:
+    """Decide keep from the score (the model's own flag stays in verdict["model_keep"]); 0 leaves it alone."""
+    v = out.verdict
+    if min_score <= 0 or not v or not isinstance(v.get("score"), (int, float)):
+        return out
+    v = {**v, "model_keep": v.get("keep"), "keep": v["score"] >= min_score}
+    return dataclasses.replace(out, verdict=v)
 
 
 class FakeJudge:

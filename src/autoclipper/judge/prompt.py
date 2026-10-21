@@ -7,7 +7,8 @@ from pathlib import Path
 
 from .schema import SUMMARY_MAX, TITLE_MAX, TYPES
 
-_COMMON = f"""Games: Escape from Tarkov is "tarkov", Wardogs is "wardogs", anything else is "other".
+_COMMON = f"""Games: Escape from Tarkov is "tarkov", Wardogs is "wardogs", Counter-Strike 2 (CS2 or CS:GO: buy
+menu, bomb sites, maps like Dust II, Mirage, Inferno, Cache) is "cs2", anything else is "other".
 Score 0-10: 0-3 nothing happens, 4-6 maybe, 7-8 good, 9-10 exceptional. Gunfights, kills, deaths with a
 story, clutch plays and funny comms score high; menus, loading screens, inventory and walking with nothing
 happening score low. Comms reactions ("clip that", laughing, shouting) are strong signals.

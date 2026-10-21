@@ -95,10 +95,12 @@ def _tally(out: JudgeResult, res: CallResult) -> None:
     out.cost_usd = round(out.cost_usd + (res.cost_usd or 0.0), 8)
 
 
-def _claude(c: _Ctx, out: JudgeResult, role: str, model: str, system: str, extra: str = "") -> dict | None:
-    """Up to ATTEMPTS guarded calls; the validated answer, or None (reasons go to out.attempts)."""
+def _claude(
+    c: _Ctx, out: JudgeResult, role: str, model: str, system: str, extra: str = "", attempts: int = ATTEMPTS
+) -> dict | None:
+    """Up to `attempts` guarded calls; the validated answer, or None (reasons go to out.attempts)."""
     content = c.content(extra)
-    for attempt in range(1, ATTEMPTS + 1):
+    for attempt in range(1, attempts + 1):
         try:
             with c.guard.slot(role, model, c.cid) as row:
                 res = run_claude(c.s.claude_bin, model, system, c.schema, content, c.s.judge_timeout_s)

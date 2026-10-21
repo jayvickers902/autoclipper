@@ -142,7 +142,7 @@ def test_success_verdict_and_ledger(env):
     r = env.judge()
     v = r.verdict
     assert (v.source, v.model, v.queued, v.keep, v.score, v.game) == (
-        "claude-haiku", "claude-haiku-5-5", False, True, 8, "other",
+        "claude-haiku", "claude-haiku-5-5", False, True, 8, "cs2",
     )  # fmt: skip
     assert v.start == 64 and v.end == 85 and len(v.title) <= 60
     assert r.ledger_rows == [1] and r.cost_usd == pytest.approx(0.0028943)
@@ -521,7 +521,7 @@ def test_parse_real_success_fixture():
     text = (JUDGE_FIX / "success.jsonl").read_text().replace('"__T+14000__"', "1792582800")
     text = re.sub(r'"__T[+-]\d+__"', "1", text)
     res = parse_stream(text, CallResult())
-    assert res.api_key_source == "none" and res.structured["game"] == "other"
+    assert res.api_key_source == "none" and res.structured["game"] == "cs2"
     assert res.rate_limit == RateLimit("allowed", 1792582800.0, 0.22, 1792582800.0, 0.23, 1.0)
     assert res.cost_usd == pytest.approx(0.0028943) and res.usage["output_tokens"] == 1117
 

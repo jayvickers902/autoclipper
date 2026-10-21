@@ -6,7 +6,7 @@ import math
 from dataclasses import asdict, dataclass
 
 TYPES = ("firefight", "kill", "death", "funny", "clutch", "loot", "other")
-GAMES = ("tarkov", "wardogs", "other")
+GAMES = ("tarkov", "wardogs", "cs2", "other")
 SOURCES = ("claude-haiku", "claude-sonnet", "ollama", "none")
 TITLE_MAX = 60
 SUMMARY_MAX = 140
