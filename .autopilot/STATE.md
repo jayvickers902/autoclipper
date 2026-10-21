@@ -19,7 +19,7 @@ Task specs are in PLAN.md.
 - [x] P2.8 backfill + report
 - [~] P2.9 judge comparison
 - [x] P2.10 hub service
-- [ ] P3.1 Segra clone + build
+- [x] P3.1 Segra clone + build
 - [ ] P3.2 TarkovIntegration
 - [ ] P3.3 recorder defaults
 - [ ] P3.4 hub uploader
@@ -50,3 +50,4 @@ Record decisions, gotchas, and anything a restarted session must know here.
 - P2.4 API: autoclipper.judge.judge_candidate(replay_path, candidate, timeline, settings=None, *, candidate_id, guard, rejudge_borderline=False) -> JudgeResult(verdict, ledger_rows, cost_usd, tokens, attempts, queued); polish(..., mode="polish"|"rejudge"); `uv run python -m autoclipper.judge status|clear-pause|one <replay>`. Ledger data/judge-ledger.sqlite (1 Haiku call used in P2.4 smoke: 11.7K in/1.1K out, 7.3 s, 5h util 0.22). Borderline re-judge opt-in (Sonnet cap 40). Pipeline queues on pause (R1), so ollama fallback is effectively unused by the pipeline; fine for now.
 - P2.10: autoclipper.service installed+enabled (posting off: no --post). Review at http://autoclipper.localhost/ (200 via Caddy). GPU gate + claude CLI verified under systemd-run as jay. Restart it after code changes that affect run: sudo systemctl restart autoclipper.
 - P2.2b: tagger = PANNs CNN14 ONNX on CPU (opt-in --tags / AUTOCLIPPER_TAGS=1; service unit sets it), GPU whisper float16 via `uv sync --extra gpu` (gated by GpuGate, CPU int8 fallback). Timeline schema v2. Service unit edited (--extra gpu, TAGS=1) but NOT yet re-installed: after P2.9 lands, sudo cp deploy/autoclipper.service /etc/systemd/system/ && daemon-reload && restart.
+- P3.1: recorder repo C:\projects\autoclipper-recorder, branch autoclipper off v1.9.4 (4bbfc60), upstream push DISABLED. Per-user .NET SDK 10.0.402 at %LOCALAPPDATA%\Microsoft\dotnet (put first on PATH). Node 24.14.1 present. Build steps in RECORDER.md; revert packages.lock.json after restore. Output publish/ (gitignored).
