@@ -1,0 +1,90 @@
+2026-10-12 21:32:06.286|1.2.0.0.47965|Info|application|Application awaken, updateQueue:'Update'
+2026-10-12 21:32:06.286|1.2.0.0.47965|Info|application|Assert.raiseExceptions:'True'
+2026-10-12 21:32:06.288|1.2.0.0.47965|Info|application|driveType:SSD swapDriveType:SSD
+2026-10-12 21:32:11.252|1.2.0.0.47965|Info|application|NVIDIA Reflex is available on this machine, Status: NvReflex_OK.
+2026-10-12 21:32:14.977|1.2.0.0.47965|Info|application|Sound settings:
+2026-10-12 21:32:14.977|1.2.0.0.47965|Info|application|PostFx settings:
+2026-10-12 21:32:14.978|1.2.0.0.47965|Info|application|Graphics settings:
+2026-10-12 21:32:18.508|1.2.0.0.47965|Info|application|Session mode: Regular
+2026-10-12 21:32:41.438|1.2.0.0.47965|Info|application|PrepareSelectedProfileLocally ProfileId:REDACTED_PROFILE_ID AccountId:1234567
+2026-10-12 21:32:41.438|1.2.0.0.47965|Info|application|CompleteSelectedProfile ProfileId:REDACTED_PROFILE_ID AccountId:1234567
+2026-10-12 21:32:52.050|1.2.0.0.47965|Debug|application|Start loading dll 'C:/Battlestate Games/Escape from Tarkov/EscapeFromTarkov_Data/../BattlEye/BEClient_x64.dll'
+2026-10-12 21:32:52.637|1.2.0.0.47965|Debug|application|SUCCESS: loading dll 'C:/Battlestate Games/Escape from Tarkov/EscapeFromTarkov_Data/../BattlEye/BEClient_x64.dll'
+2026-10-12 21:32:52.637|1.2.0.0.47965|Debug|application|Getting Proc Address for 'Init', dllPtr:'140728289722368'
+2026-10-12 21:32:52.637|1.2.0.0.47965|Debug|application|SUCCESS: getting proc address 'Init', dllPtr:'140728289722368'
+2026-10-12 21:32:52.637|1.2.0.0.47965|Debug|application|Getting Proc Address for 'GetVer', dllPtr:'140728289722368'
+2026-10-12 21:32:52.637|1.2.0.0.47965|Debug|application|SUCCESS: getting proc address 'GetVer', dllPtr:'140728289722368'
+2026-10-12 21:32:52.638|1.2.0.0.47965|Debug|application|Init: pstrGameVersion: Escape from Tarkov 1.2.0.0.47965, uiAddress: 0, usPort: 0
+2026-10-12 21:32:52.639|1.2.0.0.47965|Info|application|Initialized (v1.249)
+2026-10-12 21:32:52.639|1.2.0.0.47965|Info|application|BEClient inited successfully
+2026-10-12 21:32:52.640|1.2.0.0.47965|Debug|application|totalMemoryBeforeCleanUp 657.4883
+2026-10-12 21:32:52.640|1.2.0.0.47965|Debug|application|GC::Collect
+2026-10-12 21:32:52.895|1.2.0.0.47965|Debug|application|GC::Collect Aggressive
+2026-10-12 21:32:53.133|1.2.0.0.47965|Debug|application|collectedMemoryGB 39.26563
+2026-10-12 21:32:53.146|1.2.0.0.47965|Info|application|Config entry: GameID eft
+2026-10-12 21:32:53.146|1.2.0.0.47965|Info|application|Config entry: MasterPort 17000
+2026-10-12 21:32:53.215|1.2.0.0.47965|Info|application|Disposing BEClient
+2026-10-12 21:32:53.215|1.2.0.0.47965|Info|application|BEClient exit
+2026-10-12 21:32:53.317|1.2.0.0.47965|Info|application|BEClient exit successfully
+2026-10-12 21:32:53.317|1.2.0.0.47965|Debug|application|Releasing dll '140728289722368'
+2026-10-12 21:32:53.471|1.2.0.0.47965|Debug|application|SUCCESS: Dll released with code '1'
+2026-10-12 21:34:04.888|1.2.0.0.47965|Debug|application|Matching with group id: 1234567
+2026-10-12 21:34:04.888|1.2.0.0.47965|Info|application|ClientMetricsEvents():104.0333
+2026-10-12 21:34:06.207|1.2.0.0.47965|Info|application|scene preset path:maps/city_preset.bundle rcid:city.scenespreset.asset
+2026-10-12 21:34:06.207|1.2.0.0.47965|Debug|application|TRACE-NetworkGameMatching G
+2026-10-12 21:34:07.715|1.2.0.0.47965|Debug|application|TRACE-NetworkGameMatching H
+2026-10-12 21:34:07.717|1.2.0.0.47965|Debug|application|TRACE-NetworkGameMatching I
+2026-10-12 21:34:57.675|1.2.0.0.47965|Info|application|LocationLoaded:47.18 real:52.78 diff:5.59
+2026-10-12 21:35:38.129|1.2.0.0.47965|Info|application|MatchingCompleted:87.71 real:93.24 diff:5.52
+2026-10-12 21:35:38.184|1.2.0.0.47965|Info|application|GamePrepared:87.75 real:93.29 diff:5.54
+2026-10-12 21:35:38.184|1.2.0.0.47965|Debug|application|TRACE-NetworkGameCreate 0
+2026-10-12 21:35:38.184|1.2.0.0.47965|Debug|application|TRACE-NetworkGameCreate 2
+2026-10-12 21:35:38.432|1.2.0.0.47965|Debug|application|TRACE-NetworkGameCreate 3
+2026-10-12 21:35:38.432|1.2.0.0.47965|Debug|application|TRACE-NetworkGameCreate profileStatus: 'Profileid: REDACTED_PROFILE_ID, Status: Busy, RaidMode: Online, Ip: 203.0.113.10, Port: 17002, Location: TarkovStreets, Sid: us-mfe01lgs001_REDACTED_RAID_ID_13.10.26_03-34-31, GameMode: deathmatch, shortId: ABC123'
+2026-10-12 21:35:38.435|1.2.0.0.47965|Debug|application|TRACE-NetworkGameCreate 4
+2026-10-12 21:35:38.440|1.2.0.0.47965|Info|application|GameCreated:88.01(0.26) real:93.55(0.26) diff:5.54
+2026-10-12 21:35:38.440|1.2.0.0.47965|Debug|application|TRACE-NetworkGameCreate 5
+2026-10-12 21:36:14.375|1.2.0.0.47965|Info|application|GamePooled:123.46(35.44) real:129.48(35.92) diff:6.01
+2026-10-12 21:36:21.593|1.2.0.0.47965|Info|application|GameRunned:125.68(2.22) real:136.7(7.22) diff:11.01
+2026-10-12 21:36:21.800|1.2.0.0.47965|Info|application|GameSpawn:125.88(0.19) real:136.91(0.21) diff:11.03
+2026-10-12 21:36:22.269|1.2.0.0.47965|Info|application|PlayerSpawnEvent:126.36(0.48) real:137.38(0.47) diff:11.02
+2026-10-12 21:36:31.947|1.2.0.0.47965|Info|application|GameSpawned:134.58(8.22) real:147.05(9.66) diff:12.47
+2026-10-12 21:36:31.948|1.2.0.0.47965|Debug|application|Heap pre-allocation - disabled
+2026-10-12 21:36:31.958|1.2.0.0.47965|Debug|application|GC::CollectAsync iteration: 0.01040649s True
+2026-10-12 21:36:31.967|1.2.0.0.47965|Debug|application|GC::CollectAsync iteration: 0.007080078s True
+2026-10-12 21:36:32.367|1.2.0.0.47965|Debug|application|GC::CollectAsync time 0.4194641s 2166.961 - collected 43.15234
+2026-10-12 21:36:32.368|1.2.0.0.47965|Debug|application|GC mode switched to Disabled
+2026-10-12 21:36:56.766|1.2.0.0.47965|Info|application|GameStarting:159.4(24.81) real:171.87(24.81) diff:12.47
+2026-10-12 21:37:08.828|1.2.0.0.47965|Info|application|GameStarted:169.12(9.72) real:183.93(12.05) diff:14.8
+2026-10-12 21:37:08.844|1.2.0.0.47965|Debug|application|TRACE-NetworkGameCreate 6
+2026-10-12 21:37:09.129|1.2.0.0.47965|Info|application|[Transit] `REDACTED_ID` Count:0, EventPlayer:False
+2026-10-12 21:38:31.693|1.2.0.0.47965|Info|application|Reason:Stuck, Position:(229.450, -2.077, -96.407), SpeedLimit:4.050857, CurrentState:Run, StrengthSummaryLevel:15, WalkSpeedLimit:0.9734557
+2026-10-12 21:38:31.911|1.2.0.0.47965|Info|application|Reason:Stuck, Position:(229.450, -2.077, -96.407), SpeedLimit:4.050857, CurrentState:Run, StrengthSummaryLevel:15, WalkSpeedLimit:0.9734557
+2026-10-12 21:42:29.557|1.2.0.0.47965|Debug|application|totalMemoryBeforeCleanUp 2950.922
+2026-10-12 21:42:29.557|1.2.0.0.47965|Debug|application|GC mode switched to Enabled
+2026-10-12 21:42:29.557|1.2.0.0.47965|Debug|application|GC::Collect
+2026-10-12 21:42:29.953|1.2.0.0.47965|Debug|application|GC::Collect Aggressive
+2026-10-12 21:42:30.386|1.2.0.0.47965|Debug|application|collectedMemoryGB 1403.789
+2026-10-12 21:42:30.386|1.2.0.0.47965|Debug|application|GC mode switched to Disabled
+2026-10-12 21:42:30.386|1.2.0.0.47965|Info|application|PrepareSelectedProfileLocally ProfileId:REDACTED_PROFILE_ID AccountId:1234567
+2026-10-12 21:42:30.484|1.2.0.0.47965|Info|application|PrepareSelectedProfileLocally ProfileId:REDACTED_PROFILE_ID AccountId:1234567
+2026-10-12 21:42:30.489|1.2.0.0.47965|Info|application|CompleteSelectedProfile ProfileId:REDACTED_PROFILE_ID AccountId:1234567
+2026-10-12 21:43:46.866|1.2.0.0.47965|Info|application|PrepareSelectedProfileLocally ProfileId:REDACTED_PROFILE_ID AccountId:1234567
+2026-10-12 21:43:46.866|1.2.0.0.47965|Info|application|CompleteSelectedProfile ProfileId:REDACTED_PROFILE_ID AccountId:1234567
+2026-10-12 21:43:49.457|1.2.0.0.47965|Debug|application|Start loading dll 'C:/Battlestate Games/Escape from Tarkov/EscapeFromTarkov_Data/../BattlEye/BEClient_x64.dll'
+2026-10-12 21:43:50.064|1.2.0.0.47965|Debug|application|SUCCESS: loading dll 'C:/Battlestate Games/Escape from Tarkov/EscapeFromTarkov_Data/../BattlEye/BEClient_x64.dll'
+2026-10-12 21:43:50.064|1.2.0.0.47965|Debug|application|Getting Proc Address for 'Init', dllPtr:'140728513331200'
+2026-10-12 21:43:50.064|1.2.0.0.47965|Debug|application|SUCCESS: getting proc address 'Init', dllPtr:'140728513331200'
+2026-10-12 21:43:50.064|1.2.0.0.47965|Debug|application|Getting Proc Address for 'GetVer', dllPtr:'140728513331200'
+2026-10-12 21:43:50.064|1.2.0.0.47965|Debug|application|SUCCESS: getting proc address 'GetVer', dllPtr:'140728513331200'
+2026-10-12 21:43:50.064|1.2.0.0.47965|Debug|application|Init: pstrGameVersion: Escape from Tarkov 1.2.0.0.47965, uiAddress: 0, usPort: 0
+2026-10-12 21:43:50.066|1.2.0.0.47965|Info|application|Initialized (v1.249)
+2026-10-12 21:43:50.066|1.2.0.0.47965|Info|application|BEClient inited successfully
+2026-10-12 21:43:50.089|1.2.0.0.47965|Info|application|Config entry: GameID eft
+2026-10-12 21:43:50.089|1.2.0.0.47965|Info|application|Config entry: MasterPort 17000
+2026-10-12 21:43:50.884|1.2.0.0.47965|Debug|application|GC mode switched to Enabled
+2026-10-12 21:43:50.902|1.2.0.0.47965|Info|application|Disposing BEClient
+2026-10-12 21:43:50.902|1.2.0.0.47965|Info|application|BEClient exit
+2026-10-12 21:43:51.004|1.2.0.0.47965|Info|application|BEClient exit successfully
+2026-10-12 21:43:51.004|1.2.0.0.47965|Debug|application|Releasing dll '140728513331200'
+2026-10-12 21:43:51.147|1.2.0.0.47965|Debug|application|SUCCESS: Dll released with code '1'

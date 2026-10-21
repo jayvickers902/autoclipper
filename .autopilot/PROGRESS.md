@@ -6,3 +6,4 @@ One line per event: `YYYY-MM-DD HH:MM  task  result  evidence`.
 2026-10-21 01:23  session  session start (fresh: no repo yet)  -
 2026-10-21 01:24  P0.1  done: uv project (py3.12), pytest+ruff, README, git init  uv run pytest -q (5 passed), ruff check clean
 2026-10-21 01:24  P0.2  done: port 4180 claimed, in config defaults and .env.example  tests/test_config.py
+2026-10-21 01:27  P0.3  done: fixture generator (5 clips + ground truth json), 2 redacted EFT log excerpts  uv run pytest -q (24 passed), redaction grep clean

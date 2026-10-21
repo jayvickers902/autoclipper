@@ -5,8 +5,8 @@ Task specs are in PLAN.md.
 
 - [x] P0.1 scaffold repo
 - [x] P0.2 ports claim
-- [~] P0.3 fixtures
-- [ ] R1 design review
+- [x] P0.3 fixtures
+- [~] R1 design review
 - [ ] P1 OBS stopgap
 - [ ] P2.1 media primitives
 - [ ] P2.2 signals
