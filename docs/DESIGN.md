@@ -163,6 +163,8 @@ claude.ai on the `pro` plan with extra usage off:
   and the other anti-cheat systems ban for that, and the bans would hit Jay and his friends too. Use
   screen OCR, log files, audio and the player's own input only.
 - **Consent for voices.** Comms audio records friends, so "include my voice" is a per-person setting.
+- **OBS's signed graphics hook is allowed.** Game Capture injects OBS's own signed hook into the game's
+  graphics API, as every streamer does; that is not game-memory access.
 - **Originals are read-only.** Autoclipper never modifies, moves or deletes original recordings.
 
 ## Later

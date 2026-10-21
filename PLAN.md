@@ -123,6 +123,9 @@ Goal: no more black clips, separate audio tracks, smaller files, and a buffer th
 
 It must work both on today's single-mix replays and on separate tracks.
 
+Split by R1: **P2.2a** (builder) loudness, onset density, CPU faster-whisper (int8) and keywords, with no
+torch; **P2.2b** (builder, later) AudioSet tags and GPU whisper, added to the same timeline.
+
 **P2.3** (engineer) Candidate windows:
 - fuse the signals into an interest curve;
 - start about 6 s before a fight's first shot and end about 4 s after its last event;
@@ -209,7 +212,7 @@ tracks for game, Discord and mic.
 **P4.2** (builder) Retention:
 - a rolling cap for raw recordings, 40 GB by default;
 - it applies only to files that autoclipper or the recorder created;
-- run it in dry-run mode first.
+- report-only (dry run) in this run: recordings are originals, so enabling deletion is a NEEDS-JAY item.
 
 ### P5: Group features (testable offline)
 
@@ -235,7 +238,14 @@ box on the review page.
 Usage, not time, limits this run, so the order is by value: if usage runs out, P1 and P2 matter most.
 
 - Start with P0, then R1.
-- After that, run at most two tracks at once: P1 (engineer) alongside P2.1 → P2.5 (builder and engineer).
+- After that, run at most two tracks at once: P1 (engineer) alongside the thin hub slice
+  P2.1 → P2.2a → P2.3 → P2.4 → P2.5 → P2.7 → P2.8 → P2.10, then P2.6, P2.2b and P2.9.
 - P2.8 needs P2.1–P2.5, and P2.7 for posting.
 - P3 starts once P2.8 is done. P4 and P5 come after P2.5.
+- If usage runs short, drop in this order: P2.9, P3.3–P3.4, P4, P5.1.
 - R2 comes last.
+
+R1 changes (2026-10-21): P2.2 is split into P2.2a (loudness, onsets, CPU faster-whisper and keywords, no
+torch) and P2.2b (AudioSet tags and GPU whisper), because torch/cuDNN in WSL is a usage sink. P2.3 goes to a
+builder from a precise spec. The run's 300/40 call caps and a weekly-utilization guard are enforced in code
+(P2.4). P4.2 is report-only: deleting recordings needs Jay.
