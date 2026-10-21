@@ -14,9 +14,9 @@ Task specs are in PLAN.md.
 - [x] P2.3 candidate windows
 - [x] P2.4 judge (claude CLI) + usage guard
 - [x] P2.5 store + pipeline + CLI
-- [~] P2.6 review page
+- [x] P2.6 review page
 - [x] P2.7 Discord poster
-- [ ] P2.8 backfill + report
+- [~] P2.8 backfill + report
 - [ ] P2.9 judge comparison
 - [ ] P2.10 hub service
 - [ ] P3.1 Segra clone + build

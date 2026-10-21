@@ -8,7 +8,7 @@ once). Replay identity is (sha256, path); a second path with the same hash is re
                 accumulated seconds (judge re-runs add up)
     candidates  window + signal score; judge_status pending|judged|queued|failed, verdict JSON, model, cost
     clips       output paths (cut, share mp4, thumb, webp) and the posted flag
-    labels      thumbs 'up'/'down' per clip, for the review page
+    labels      thumbs 'up'/'down' per candidate (clip_id too when it has a clip), for the review page
 """
 
 from __future__ import annotations
@@ -99,7 +99,25 @@ CREATE TABLE IF NOT EXISTS labels (
 );
 """
 
-MIGRATIONS = [SCHEMA_V1]  # index + 1 is the user_version it brings the db to
+# v2: labels belong to a candidate (clip_id optional), so judged-but-discarded candidates can be labelled too.
+SCHEMA_V2 = """
+CREATE TABLE labels_new (
+    id INTEGER PRIMARY KEY,
+    candidate_id INTEGER NOT NULL REFERENCES candidates(id),
+    clip_id INTEGER REFERENCES clips(id),
+    label TEXT NOT NULL CHECK (label IN ('up','down')),
+    note TEXT NOT NULL DEFAULT '',
+    created_at REAL NOT NULL
+);
+INSERT INTO labels_new(id, candidate_id, clip_id, label, note, created_at)
+    SELECT l.id, c.candidate_id, l.clip_id, l.label, l.note, l.created_at
+    FROM labels l JOIN clips c ON c.id = l.clip_id;
+DROP TABLE labels;
+ALTER TABLE labels_new RENAME TO labels;
+CREATE INDEX labels_candidate ON labels(candidate_id);
+"""
+
+MIGRATIONS = [SCHEMA_V1, SCHEMA_V2]  # index + 1 is the user_version it brings the db to
 SCHEMA_VERSION = len(MIGRATIONS)
 
 _REPLAY_COLS = frozenset({
@@ -274,9 +292,26 @@ class Store:
         return self.con.execute("SELECT id FROM clips WHERE candidate_id = ?", (cid,)).fetchone()["id"]
 
     def add_label(self, clip_id: int, label: str, note: str = "") -> int:
+        """Label a clip (and so its candidate)."""
+        row = self.con.execute("SELECT candidate_id FROM clips WHERE id = ?", (clip_id,)).fetchone()
+        if row is None:
+            raise ValueError(f"no clip {clip_id}")
+        return self._insert_label(row["candidate_id"], clip_id, label, note)
+
+    def label_candidate(self, cid: int, label: str, note: str = "") -> int:
+        """Label a candidate; the clip id is filled in when it has one."""
+        clip = self.clip_for(cid)
+        return self._insert_label(cid, clip["id"] if clip else None, label, note)
+
+    def _insert_label(self, cid: int, clip_id: int | None, label: str, note: str) -> int:
         with self.con:
             cur = self.con.execute(
-                "INSERT INTO labels(clip_id, label, note, created_at) VALUES(?,?,?,?)",
-                (clip_id, label, note, time.time()),
+                "INSERT INTO labels(candidate_id, clip_id, label, note, created_at) VALUES(?,?,?,?,?)",
+                (cid, clip_id, label, note, time.time()),
             )
         return int(cur.lastrowid or 0)
+
+    def latest_labels(self) -> dict[int, str]:
+        """candidate id -> its most recent label ('up'/'down')."""
+        rows = self.con.execute("SELECT candidate_id, label FROM labels ORDER BY id")
+        return {r["candidate_id"]: r["label"] for r in rows}

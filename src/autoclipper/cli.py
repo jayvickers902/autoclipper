@@ -46,6 +46,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     report = sub.add_parser("report", help="counts, keeps, stage timings and judge calls")
     report.add_argument("--json", action="store_true")
+
+    serve = sub.add_parser("serve", help="the local review page (default http://127.0.0.1:4180/)")
+    serve.add_argument("--port", type=int, default=None, help="override AUTOCLIPPER_PORT (0 = any free port)")
     return parser
 
 
@@ -136,6 +139,19 @@ def _cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    import dataclasses
+
+    from autoclipper.config import Settings
+    from autoclipper.review import serve
+
+    settings = Settings.from_env()
+    if args.port is not None:
+        settings = dataclasses.replace(settings, port=args.port)
+    serve(settings, log=lambda msg: print(msg, flush=True))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -155,4 +171,6 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_watch(args)
     elif args.command == "report":
         return _cmd_report(args)
+    elif args.command == "serve":
+        return _cmd_serve(args)
     return 0
