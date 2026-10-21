@@ -34,3 +34,5 @@ One line per event: `YYYY-MM-DD HH:MM  task  result  evidence`.
 2026-10-21 09:26  P5.2  done: FTS5 search over titles/summaries/type/game/map/transcript (v4 migration + backfill), CLI + review /search, align CLI  full pytest 295 passed (2 known timing tests deselected); live search 3 hits; odd query 200; service restarted on v4
 2026-10-21 13:41  session  session start (restart: R2 [~] with no report on disk)  -
 2026-10-21 14:06  R2-fix  recorder: upstream auto-update disabled (UpdatePolicy, ForkUpdateUrl empty, auto-install off)  dotnet test 75 passed (re-run by orchestrator); recorder 0722634
+2026-10-21 14:14  P2.9  ollama row done: qwen3:8b acc 0.41/kappa 0.10 (not a usable fallback), vision 27b n=4 ~320 s each; 0 Claude calls (ledger unchanged 60 Haiku/28 Sonnet)  docs/JUDGE-COMPARISON.md, commit 64600fb
+2026-10-21 14:14  R2  done: reviewer found 1 blocker + 8; fixed 1,3,4,6,7,8 (hub b789e89) and 5 (recorder 0722634), ticketed 2 (obs-websocket) and 9 (polish unused); pytest 306 passed, dotnet test 75 passed, service active (all re-run by orchestrator)  docs/AUTOPILOT-REPORT.md

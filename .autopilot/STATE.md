@@ -28,7 +28,7 @@ Task specs are in PLAN.md.
 - [x] P5.1 multi-POV alignment
 - [x] P5.2 search
 - [x] P5.3 bot integration doc
-- [~] R2 final review + report
+- [x] R2 final review + report
 
 ## Notes for the next session
 
