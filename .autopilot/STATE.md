@@ -13,7 +13,7 @@ Task specs are in PLAN.md.
 - [ ] P2.2b signals: AudioSet tags, GPU whisper
 - [x] P2.3 candidate windows
 - [~] P2.4 judge (claude CLI) + usage guard
-- [ ] P2.5 store + pipeline + CLI
+- [x] P2.5 store + pipeline + CLI
 - [ ] P2.6 review page
 - [x] P2.7 Discord poster
 - [ ] P2.8 backfill + report
@@ -46,3 +46,4 @@ Record decisions, gotchas, and anything a restarted session must know here.
 - P2.3 API: autoclipper.candidates.find_candidates(timeline, max_n=None, min_score=0.6) -> [Candidate] (to_dict); env AUTOCLIPPER_MAX_CANDIDATES (default 4). Real replays give 2 windows each, many hitting the 45 s cap. Thresholds are untuned guesses.
 - q is paused all session: q's auto-detect treats EpicOnlineServicesUserHelper.exe (Epic Games folder) as a game. Don't rely on q; the hub's GPU gate (P2.10) must not copy that false positive (launcher/EOS helpers aren't games).
 - tests/test_signals.py::test_speech_keywords flaked once under parallel load (passes alone).
+- P2.5 API: pipeline.process_replay/process_pass/render_clip; judging.py has Judge Protocol + ClaudeJudge (lazy import of autoclipper.judge; adapt ClaudeJudge.__call__/paused/to_outcome when P2.4 API lands) + FakeJudge; CLI process/backfill/watch/report with `--judge fake`, `--no-whisper`; env AUTOCLIPPER_PIPELINE_JUDGE=fake. safety.assert_writable. Share encodes land ~18 MB (Discord free limit likely 10 MB -> 413 path re-encodes).

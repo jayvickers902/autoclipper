@@ -3,8 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import json
+import sys
+import time
+from pathlib import Path
 
 from autoclipper import __version__
+
+
+def _add_pipeline_flags(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--judge", default=None, help="'fake' keeps every candidate offline (default: Claude)")
+    p.add_argument("--no-whisper", action="store_true", help="skip speech transcription (faster, weaker)")
+    p.add_argument("--stable-wait", type=float, default=2.0, metavar="S", help="seconds between size checks")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -13,7 +23,117 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
     notify = sub.add_parser("notify", help="post a status line to the Discord test webhook")
     notify.add_argument("text")
+
+    process = sub.add_parser(
+        "process", help="run one replay through the pipeline (resumes unfinished stages)"
+    )
+    process.add_argument("file", type=Path)
+    _add_pipeline_flags(process)
+
+    backfill = sub.add_parser("backfill", help="process the top-level 'Replay *.mp4' files of a directory")
+    backfill.add_argument("dir", type=Path)
+    backfill.add_argument("--limit", type=int, default=None, help="process at most N replays")
+    backfill.add_argument("--retry-failed", action="store_true")
+    _add_pipeline_flags(backfill)
+
+    watch = sub.add_parser("watch", help="poll the replay directory and process new replays")
+    watch.add_argument("--interval", type=float, default=30.0, metavar="S")
+    watch.add_argument(
+        "--once", action="store_true", help="one pass (with its own size-stability wait), then exit"
+    )
+    watch.add_argument("--retry-failed", action="store_true")
+    _add_pipeline_flags(watch)
+
+    report = sub.add_parser("report", help="counts, keeps, stage timings and judge calls")
+    report.add_argument("--json", action="store_true")
     return parser
+
+
+def _context(args: argparse.Namespace, retry_failed: bool):
+    from autoclipper.config import Settings
+    from autoclipper.judging import resolve_judge
+    from autoclipper.pipeline import Context, Options
+    from autoclipper.store import Store
+
+    settings = Settings.from_env()
+    return Context(
+        settings=settings,
+        store=Store(settings),
+        judge=resolve_judge(settings, args.judge),
+        options=Options(whisper=not getattr(args, "no_whisper", False), retry_failed=retry_failed),
+        log=lambda msg: print(msg, flush=True),
+    )
+
+
+def _summary(results: list) -> str:
+    done = [r for r in results if not r.skipped]
+    by: dict[str, int] = {}
+    for r in done:
+        by[r.status] = by.get(r.status, 0) + 1
+    clips = sum(r.clips for r in done)
+    kinds = ", ".join(f"{n} {k}" for k, n in sorted(by.items())) or "nothing to do"
+    return f"{len(done)} replay(s) processed ({kinds}), {clips} clip(s)"
+
+
+def _cmd_process(args: argparse.Namespace) -> int:
+    from autoclipper.pipeline import process_replay
+    from autoclipper.scan import settle
+
+    ctx = _context(args, retry_failed=True)
+    with ctx.store:
+        path = args.file.resolve()
+        if not path.is_file():
+            print(f"autoclipper: {path} is not a file", file=sys.stderr)
+            return 2
+        if path.is_relative_to(ctx.settings.output_dir.resolve()):
+            print("autoclipper: refusing to process a file in the output directory", file=sys.stderr)
+            return 2
+        if not settle([path], args.stable_wait):
+            print(f"autoclipper: {path.name} is still changing (or empty); try again later", file=sys.stderr)
+            return 3
+        res = process_replay(ctx, path)
+    print(f"{path.name}: {res.status}" + (f" ({res.note})" if res.note else ""))
+    return 1 if res.status == "failed" else 0
+
+
+def _cmd_backfill(args: argparse.Namespace) -> int:
+    from autoclipper.pipeline import process_pass
+
+    ctx = _context(args, retry_failed=args.retry_failed)
+    with ctx.store:
+        results = process_pass(ctx, args.dir, limit=args.limit, stable_wait=args.stable_wait)
+    print(_summary(results))
+    return 1 if any(r.status == "failed" for r in results) else 0
+
+
+def _cmd_watch(args: argparse.Namespace) -> int:
+    from autoclipper.pipeline import process_pass
+    from autoclipper.scan import StabilityTracker
+
+    ctx = _context(args, retry_failed=args.retry_failed)
+    tracker = None if args.once else StabilityTracker()
+    with ctx.store:
+        try:
+            while True:
+                results = process_pass(ctx, tracker=tracker, stable_wait=args.stable_wait)
+                if results or args.once:
+                    print(_summary(results), flush=True)
+                if args.once:
+                    return 1 if any(r.status == "failed" for r in results) else 0
+                time.sleep(args.interval)
+        except KeyboardInterrupt:
+            return 0
+
+
+def _cmd_report(args: argparse.Namespace) -> int:
+    from autoclipper.config import Settings
+    from autoclipper.report import build_report, format_report
+    from autoclipper.store import Store
+
+    with Store(Settings.from_env()) as store:
+        data = build_report(store)
+    print(json.dumps(data, indent=1) if args.json else format_report(data))
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,4 +147,12 @@ def main(argv: list[str] | None = None) -> int:
         result = post_text(args.text)
         print(f"notify {result}")
         return 0 if result.ok else 1
+    elif args.command == "process":
+        return _cmd_process(args)
+    elif args.command == "backfill":
+        return _cmd_backfill(args)
+    elif args.command == "watch":
+        return _cmd_watch(args)
+    elif args.command == "report":
+        return _cmd_report(args)
     return 0
